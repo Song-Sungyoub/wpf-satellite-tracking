@@ -1,0 +1,479 @@
+﻿<Window x:Class="WpfOrbitDemo.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Orbit Lab · WPF 3D" Width="1200" Height="800" MinWidth="900" MinHeight="650"
+        Background="#080E1C" Foreground="#E7EEF8" FontFamily="Malgun Gothic" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextBrush" Color="#E7EEF8"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#899BB5"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#65DEE0"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#111D30"/>
+        <SolidColorBrush x:Key="InputBrush" Color="#0B1426"/>
+        <SolidColorBrush x:Key="ControlBrush" Color="#23314A"/>
+        <SolidColorBrush x:Key="HoverBrush" Color="#2E4262"/>
+        <SolidColorBrush x:Key="PressedBrush" Color="#18243A"/>
+        <SolidColorBrush x:Key="LineBrush" Color="#3A506D"/>
+        <SolidColorBrush x:Key="ActiveBrush" Color="#163F4A"/>
+
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="#E7EEF8" /></Style>
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#111D30"/><Setter Property="Foreground" Value="#E7EEF8"/>
+            <Setter Property="BorderBrush" Value="#3A506D"/><Setter Property="Padding" Value="8,5"/>
+        </Style>
+
+        <!-- Buttons: rounded dark surface with hover / pressed / focus / disabled states. -->
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#E7EEF8"/><Setter Property="Background" Value="{StaticResource ControlBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="16,9"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" SnapsToDevicePixels="True">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{StaticResource HoverBrush}"/></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{StaticResource PressedBrush}"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentBrush}"/></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.45"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- View buttons bind Tag to an Is...Focus flag and light up while that view is active. -->
+        <Style x:Key="ModeButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource ActiveBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#1C5560"/><Setter Property="BorderBrush" Value="#65DEE0"/><Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style x:Key="PanelButton" TargetType="Button" BasedOn="{StaticResource ModeButton}">
+            <Setter Property="Padding" Value="8,6"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+
+        <!-- Scroll bars: slim track + rounded thumb. -->
+        <Style x:Key="ScrollThumb" TargetType="Thumb">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="Bar" Background="#3A506D" CornerRadius="4"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bar" Property="Background" Value="#5B7597"/></Trigger>
+                            <Trigger Property="IsDragging" Value="True"><Setter TargetName="Bar" Property="Background" Value="#65DEE0"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ScrollPage" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False"/><Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="8"/><Setter Property="MinWidth" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="#0C1628" CornerRadius="4">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton><RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageUpCommand"/></Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton><RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageDownCommand"/></Track.IncreaseRepeatButton>
+                                <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}" Margin="1"/></Track.Thumb>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Width" Value="Auto"/><Setter Property="MinWidth" Value="0"/><Setter Property="Height" Value="8"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ScrollBar">
+                                <Border Background="#0C1628" CornerRadius="4">
+                                    <Track x:Name="PART_Track">
+                                        <Track.DecreaseRepeatButton><RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageLeftCommand"/></Track.DecreaseRepeatButton>
+                                        <Track.IncreaseRepeatButton><RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageRightCommand"/></Track.IncreaseRepeatButton>
+                                        <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}" Margin="1"/></Track.Thumb>
+                                    </Track>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Slider: thin track, filled progress, round thumb. -->
+        <Style x:Key="SliderFill" TargetType="RepeatButton" BasedOn="{StaticResource ScrollPage}">
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton">
+                <Border Background="Transparent"><Border Height="4" CornerRadius="2" Background="{TemplateBinding Background}"/></Border>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="Slider">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Track x:Name="PART_Track" Height="20">
+                            <Track.DecreaseRepeatButton><RepeatButton Style="{StaticResource SliderFill}" Background="#65DEE0" Command="Slider.DecreaseLarge"/></Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton><RepeatButton Style="{StaticResource SliderFill}" Background="#2A3A55" Command="Slider.IncreaseLarge"/></Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template><ControlTemplate TargetType="Thumb">
+                                        <Ellipse x:Name="Knob" Width="16" Height="16" Fill="#E7EEF8" Stroke="#65DEE0" StrokeThickness="2"/>
+                                        <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Knob" Property="Fill" Value="#65DEE0"/></Trigger></ControlTemplate.Triggers>
+                                    </ControlTemplate></Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource InputBrush}"/><Setter Property="Foreground" Value="#E7EEF8"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/><Setter Property="CaretBrush" Value="#65DEE0"/>
+            <Setter Property="SelectionBrush" Value="#65DEE0"/><Setter Property="Padding" Value="6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Frame" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource AccentBrush}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#E7EEF8"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Border x:Name="Box" Width="16" Height="16" CornerRadius="4" BorderThickness="1" BorderBrush="#3A506D" Background="{StaticResource InputBrush}" VerticalAlignment="Center">
+                                <Path x:Name="Mark" Data="M3,8 L6.5,11.5 L13,4.5" Stroke="#080E1C" StrokeThickness="2" Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="#65DEE0"/><Setter TargetName="Box" Property="BorderBrush" Value="#65DEE0"/>
+                                <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="#65DEE0"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ComboBox: dark field and dark drop-down. -->
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#E7EEF8"/><Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Row" Background="Transparent" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource HoverBrush}"/></Trigger>
+                            <Trigger Property="IsSelected" Value="True"><Setter Property="Foreground" Value="#65DEE0"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#E7EEF8"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="Field" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="Frame" Background="{StaticResource ControlBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="7">
+                                            <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Data="M0,0 L5,5 L10,0" Stroke="#65DEE0" StrokeThickness="1.6"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource HoverBrush}"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter Margin="12,7,32,7" IsHitTestVisible="False" VerticalAlignment="Center"
+                                              Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"/>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                <Border Background="#111D30" BorderBrush="#3A506D" BorderThickness="1" CornerRadius="7" Margin="0,4,0,0" Padding="0,4"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ScrollViewer MaxHeight="{TemplateBinding MaxDropDownHeight}"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="#E7EEF8"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}" Margin="4,1">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="#1A2840"/></Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{StaticResource ActiveBrush}"/><Setter Property="Foreground" Value="#65DEE0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Expanders: chevron header; "Section" variant is used for the side-panel groups. -->
+        <Style TargetType="Expander">
+            <Setter Property="Foreground" Value="#B7CCE5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <DockPanel>
+                            <ToggleButton DockPanel.Dock="Top" Cursor="Hand" Focusable="True" IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          AutomationProperties.Name="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="Transparent" Padding="0,4">
+                                            <DockPanel>
+                                                <Path x:Name="Chevron" DockPanel.Dock="Right" Data="M0,0 L5,5 L10,0" Stroke="#65DEE0" StrokeThickness="1.6" VerticalAlignment="Center" Margin="8,0,4,0" RenderTransformOrigin="0.5,0.5">
+                                                    <Path.RenderTransform><RotateTransform Angle="-90"/></Path.RenderTransform>
+                                                </Path>
+                                                <ContentPresenter VerticalAlignment="Center"/>
+                                            </DockPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chevron" Property="RenderTransform"><Setter.Value><RotateTransform Angle="0"/></Setter.Value></Setter></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                                <ContentPresenter Content="{TemplateBinding Header}" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="Body" Visibility="Collapsed"/>
+                        </DockPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True"><Setter TargetName="Body" Property="Visibility" Value="Visible"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Section" TargetType="Expander" BasedOn="{StaticResource {x:Type Expander}}">
+            <Setter Property="Foreground" Value="#E7EEF8"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,10"/><Setter Property="IsExpanded" Value="True"/>
+        </Style>
+        <Style x:Key="SectionBody" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/><Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="12"/><Setter Property="Margin" Value="0,6,0,0"/>
+            <Setter Property="TextElement.FontWeight" Value="Normal"/><Setter Property="TextElement.FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="GroupLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#899BB5"/><Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="6,0,8,0"/>
+        </Style>
+    </Window.Resources>
+    <Grid x:Name="RootLayout" Margin="20,16,20,14">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <DockPanel x:Name="HeaderBar" Margin="0,0,0,14">
+            <Border DockPanel.Dock="Right" Background="#132D36" CornerRadius="15" Padding="14,7" VerticalAlignment="Center">
+                <TextBlock Text="●  WPF / NATIVE 3D" Foreground="#65DEE0" FontSize="11"/>
+            </Border>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                <TextBlock Text="ORBIT LAB" FontSize="24" FontWeight="Bold" VerticalAlignment="Bottom"/>
+                <TextBlock Text="지구본과 위성 궤도 · 인터랙티브 3D 데모" Foreground="#899BB5" Margin="14,0,0,3" VerticalAlignment="Bottom"/>
+            </StackPanel>
+        </DockPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="SidePanelColumn" Width="300"/></Grid.ColumnDefinitions>
+            <Border x:Name="ViewportFrame" CornerRadius="16" BorderBrush="#24334B" BorderThickness="1" Margin="0,0,16,0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><Grid.Background><RadialGradientBrush><GradientStop Color="#182A43" Offset="0"/><GradientStop Color="#090F1D" Offset="1"/></RadialGradientBrush></Grid.Background>
+                    <Grid Grid.Row="1">
+                    <Viewport3D IsHitTestVisible="False">
+                        <Viewport3D.Camera><PerspectiveCamera Position="0,0,0" LookDirection="{Binding CameraDirection}" UpDirection="0,1,0" FieldOfView="42" NearPlaneDistance="1" FarPlaneDistance="1000"/></Viewport3D.Camera>
+                        <ModelVisual3D Content="{Binding SkyScene}"/>
+                    </Viewport3D>
+                    <Viewport3D x:Name="Viewport" IsHitTestVisible="False" SizeChanged="OnViewportSizeChanged">
+                        <Viewport3D.Camera><PerspectiveCamera Position="{Binding RenderCameraPosition}" LookDirection="{Binding CameraDirection}" UpDirection="0,1,0" FieldOfView="42" NearPlaneDistance="{Binding CameraNearPlane}" FarPlaneDistance="{Binding CameraFarPlane}"/></Viewport3D.Camera>
+                        <ModelVisual3D Content="{Binding MainScene}"/>
+                    </Viewport3D>
+                    <Viewport3D x:Name="SatelliteViewport" IsHitTestVisible="False">
+                        <Viewport3D.Camera><PerspectiveCamera Position="{Binding RenderCameraPosition}" LookDirection="{Binding CameraDirection}" UpDirection="0,1,0" FieldOfView="42" NearPlaneDistance="{Binding NearSatellitePlane}" FarPlaneDistance="0.005"/></Viewport3D.Camera>
+                        <ModelVisual3D Content="{Binding NearSatelliteScene}"/>
+                    </Viewport3D>
+                    <!-- Keep routine pointer routing out of the 3D meshes; click picking remains explicit. -->
+                    <Border x:Name="OrbitInputSurface" Background="Transparent" MouseLeftButtonDown="OnPointerDown" MouseLeftButtonUp="OnPointerUp" MouseMove="OnPointerMove" MouseWheel="OnMouseWheel" LostMouseCapture="OnLostCapture"/>
+                    <ItemsControl ItemsSource="{Binding SatelliteLabels}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter"><Setter Property="RenderTransform"><Setter.Value><TranslateTransform X="{Binding Left}" Y="{Binding Top}"/></Setter.Value></Setter></Style></ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate><DataTemplate>
+                            <Button Content="{Binding Name}" Foreground="{Binding Color}" Background="#D9081425" BorderBrush="#43556F" Padding="7,4" FontSize="11" Command="{Binding DataContext.SelectOrbitCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Orbit}"/>
+                        </DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ItemsControl ItemsSource="{Binding CelestialLabels}" IsHitTestVisible="False">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter"><Setter Property="Visibility" Value="{Binding Visibility}"/><Setter Property="RenderTransform"><Setter.Value><TranslateTransform X="{Binding Left}" Y="{Binding Top}"/></Setter.Value></Setter></Style></ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate><DataTemplate><Border Background="#C9081425" CornerRadius="4" Padding="6,3"><TextBlock Text="{Binding Name}" Foreground="{Binding Color}" FontSize="11"/></Border></DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl></Grid>
+                    <Border Margin="14,12" Padding="10,7" CornerRadius="8" Background="#B3081425" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
+                        <StackPanel>
+                            <TextBlock Text="{Binding ViewDescription}" FontSize="12" Foreground="#B7CCE5" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding FrameStatus}" FontFamily="Consolas" FontSize="11" Foreground="#65DEE0" Margin="0,4,0,0" ToolTip="고유 WPF Rendering 콜백 기준입니다. GPU 표시 완료 FPS와 다를 수 있습니다. 장면 갱신 시간은 UI 스레드의 시뮬레이션·상태 갱신 시간입니다."/>
+                            <TextBlock Text="{Binding TileStatus}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            <TextBlock Text="로컬 상세 지도: NASA GIBS · Landsat/WELD · 2000년 합성 · 약 30m급 / 실행 중 통신 없음" FontSize="10" Foreground="#899BB5" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1" Margin="14,0,14,10" Padding="8,4" CornerRadius="6" Background="#B3081425"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="False">
+                        <TextBlock Text="드래그: 회전 / 지역 상세 이동 · 휠: 확대/축소 · 수신소 버튼: 고해상도 지역 보기" Foreground="#B7CCE5" FontSize="11"/>
+                    </Border>
+                    <Button x:Name="ExitFullScreenButton" Grid.Row="1" Content="전체 화면 종료 (Esc)" Click="OnToggleFullScreen" Visibility="Collapsed"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,14,0" Padding="12,6" FontSize="12" Opacity="0.85"/>
+                </Grid>
+            </Border>
+            <ScrollViewer x:Name="SidePanel" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0"><StackPanel>
+                <Expander Header="시뮬레이션" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding SimulationTimeText}" FontFamily="Consolas" FontSize="14" Margin="0,0,0,8"/>
+                            <DockPanel Margin="0,0,0,8">
+                                <Button DockPanel.Dock="Right" Content="현재 시각" Command="{Binding CurrentTimeCommand}" Padding="8,4" Margin="0" FontSize="11"/>
+                                <TextBlock Text="{Binding TimeMode}" Foreground="#65DEE0" FontSize="11" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <Expander Header="날짜·시간 설정 (KST)" FontSize="12" Margin="0,0,0,8">
+                                <StackPanel Margin="0,6,0,0">
+                                    <TextBox Text="{Binding TimeInput, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="시뮬레이션 날짜와 시간, 한국 시간" FontFamily="Consolas"/>
+                                    <TextBlock Text="yyyy-MM-dd HH:mm:ss" FontSize="10" Foreground="#899BB5" Margin="0,4"/>
+                                    <Button Content="시간 적용" Command="{Binding ApplyTimeCommand}" Padding="8,5" Margin="0"/>
+                                </StackPanel>
+                            </Expander>
+                            <TextBlock Text="{Binding TimeError}" TextWrapping="Wrap" Foreground="#FFBC5F" FontSize="11"/>
+                            <TextBlock Text="{Binding Speed, StringFormat=재생 속도 · {0:F0}배}" FontSize="13" Margin="0,4,0,0"/>
+                            <Slider Minimum="1" Maximum="600" Value="{Binding Speed}" Margin="0,6,0,8" AutomationProperties.Name="시뮬레이션 재생 속도"/>
+                            <TextBlock Text="{Binding SolarInfo}" FontSize="12" Foreground="#FFDC95" LineHeight="20"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="보기 · 태양 · 달 · 행성 8개" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <ComboBox x:Name="ScaleModeSelector" SelectedIndex="{Binding ScaleModeIndex, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="축척 모드">
+                                <ComboBoxItem Content="관측용 모드"/><ComboBoxItem Content="실제 축척 모드"/>
+                            </ComboBox>
+                            <TextBlock Text="{Binding ScaleDescription}" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="0,0,0,8"/>
+                            <Button Content="지구 주변 보기 · 달 / 위성" Command="{Binding FocusEarthSystemCommand}" Tag="{Binding IsEarthFocus}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="태양계 전체 보기 · 행성 8개" Command="{Binding FocusCelestialsCommand}" Tag="{Binding IsSolarFocus}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="내행성 보기 · 수성~화성" Command="{Binding FocusInnerPlanetsCommand}" Tag="{Binding IsInnerFocus}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="태양 확대 보기" Command="{Binding FocusSunCommand}" Tag="{Binding IsSunFocus}" Style="{StaticResource PanelButton}"/>
+                            <TextBlock Text="전체 보기의 작은 천체는 이름 버튼으로 확대&#10;실제 축척은 크기를 유지하고 카메라만 접근&#10;600배에서도 행성 공전은 수 시간 이상 소요" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="0,2,0,8"/>
+                            <ItemsControl ItemsSource="{Binding CelestialLabels}">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate><DataTemplate><Button Content="{Binding Name}" Foreground="{Binding Color}" Command="{Binding DataContext.FocusCelestialCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="9,4" FontSize="11" Margin="0,0,6,6"/></DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="위성 / 궤도 · 총 50대" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <TextBlock Text="A형 30 / B형 20" Foreground="#65DEE0" Margin="0,0,0,6"/>
+                            <ListBox ItemsSource="{Binding SatellitesView}" SelectedItem="{Binding SelectedOrbit}" MaxHeight="230" VirtualizingPanel.IsVirtualizingWhenGrouping="True" Background="#0B1426" BorderThickness="0" Foreground="#E7EEF8" Margin="0,0,0,10" AutomationProperties.Name="위성 선택">
+                                <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="#65DEE0" FontWeight="SemiBold" Margin="8,8,0,4"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
+                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="10,5"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/></DataTemplate></ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding SelectedInfo}" TextWrapping="Wrap" Foreground="#B7CCE5" FontSize="12" LineHeight="20"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="선택 위성 · 통신 / 촬영" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <CheckBox Content="통신선·송수신 펄스 표시" IsChecked="{Binding ShowCommunications}" Margin="0,0,0,8"/>
+                            <CheckBox Content="수신소 커버리지 모드" IsChecked="{Binding ShowCoverage}" Margin="0,0,0,2"
+                                      ToolTip="수신소별 고도각 10° 이상 가시 원뿔과 지상 커버리지를 표시합니다."/>
+                            <TextBlock Text="수신소마다 다른 위성을 추적 · 통과 후 천정 대기" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="24,0,0,8"/>
+                            <TextBlock Text="{Binding CommunicationStatus}" Foreground="#B7CCE5" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <Button Content="교신 가능한 다음 시점 보기" Command="{Binding FindContactCommand}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="{Binding CaptureButtonText}" Command="{Binding ToggleCaptureCommand}" Tag="{Binding IsCapturing}" Style="{StaticResource PanelButton}"/>
+                            <TextBlock Text="{Binding CaptureStatus}" Foreground="#FFBC5F" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBlock Text="교신: 고도각 10° 이상 / 지구 가림 반영&#10;흰 펄스: 송신 / 파란 펄스: 수신&#10;촬영은 영역 시각화 · 영상 파일 생성 없음&#10;계산·효과는 오프라인으로 동작" Foreground="#899BB5" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBlock Text="지상 안테나 · 대전 / 오사카 / 상하이" Foreground="#64F0B4" FontSize="12"/>
+                            <TextBlock Text="도시 대표 좌표 · 식별용 확대 모형" TextWrapping="Wrap" Foreground="#899BB5" FontSize="11"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="표시 · 부하 조절" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <CheckBox Content="궤도선" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,7"/>
+                            <CheckBox Content="지상궤적 (수신소 중심을 지나는 반복 궤적)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,7"/>
+                            <CheckBox Content="위성 이름표" IsChecked="{Binding ShowSatelliteLabels}" Margin="0,0,0,7"/>
+                            <CheckBox Content="모든 위성 날개·접시 움직임" IsChecked="{Binding AnimateAllSatellites}" Margin="0,0,0,2"
+                                      ToolTip="끄면 위성들을 고정 자세의 한 묶음으로 그립니다. 선택 위성과, 확대해서 화면에 8대 이하만 보일 때는 개별로 움직입니다."/>
+                            <TextBlock Text="끄면 고정 묶음 · 선택/화면 8대 이하만 움직임" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="24,0,0,7"/>
+                            <CheckBox Content="달" IsChecked="{Binding ShowMoon}" Margin="0,0,0,7"/>
+                            <CheckBox Content="구름" IsChecked="{Binding ShowClouds}" Margin="0,0,0,7"/>
+                            <CheckBox Content="대기층" IsChecked="{Binding ShowAtmosphere}" Margin="0,0,0,7"/>
+                            <CheckBox Content="야간 도시 불빛 (빠른 재생 시 부하 큼)" IsChecked="{Binding ShowNightLights}" Margin="0,0,0,7"/>
+                            <CheckBox Content="별 배경" IsChecked="{Binding ShowStars}" Margin="0,0,0,4"/>
+                            <TextBlock Text="지구 주변 보기에 적용 · 태양계 보기의 행성은 항상 표시" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="프레임 측정" Style="{StaticResource Section}" IsExpanded="False">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <Button Content="{Binding FrameMeasurementButton}" Command="{Binding MeasureFramesCommand}" Style="{StaticResource PanelButton}"/>
+                            <TextBlock Text="{Binding FrameMeasurementStatus}" FontFamily="Consolas" Foreground="#65DEE0" FontSize="10" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+            </StackPanel></ScrollViewer>
+        </Grid>
+        <DockPanel x:Name="BottomBar" Grid.Row="2" Margin="0,12,0,0" LastChildFill="False">
+            <TextBlock DockPanel.Dock="Right" Text="Earth imagery: NASA Blue / Black Marble" VerticalAlignment="Center" Foreground="#7387A3" FontSize="11"/>
+            <WrapPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                <Button Content="{Binding PlaybackText}" Command="{Binding TogglePlaybackCommand}" MinWidth="96" Style="{StaticResource PrimaryButton}"/>
+                <Button Content="시점 / 시간 초기화" Command="{Binding ResetCommand}"/>
+                <Button Content="전체 화면 (F11)" Click="OnToggleFullScreen" Margin="0,0,4,0" ToolTip="3D 화면만 모니터 전체에 표시합니다. Esc 또는 F11로 돌아옵니다."/>
+                <TextBlock Text="보기" Style="{StaticResource GroupLabel}" Margin="14,0,8,0"/>
+                <Button Content="지상 안테나 보기" Command="{Binding FocusGroundStationsCommand}" Tag="{Binding IsGroundFocus}" Style="{StaticResource ModeButton}"/>
+                <Button Content="위성 모델 보기" Command="{Binding FocusSatelliteCommand}" Tag="{Binding IsSatelliteFocus}" Style="{StaticResource ModeButton}" Margin="0,0,4,0"/>
+                <TextBlock Text="수신소" Style="{StaticResource GroupLabel}" Margin="14,0,8,0"/>
+                <ItemsControl ItemsSource="{Binding GroundStations}" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate><DataTemplate>
+                        <Button Content="{Binding Name}" Padding="12,9" Command="{Binding DataContext.FocusStationCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"/>
+                    </DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </WrapPanel>
+        </DockPanel>
+    </Grid>
+</Window>

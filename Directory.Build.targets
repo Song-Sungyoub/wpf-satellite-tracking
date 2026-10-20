@@ -1,0 +1,13 @@
+<Project>
+  <!-- Exclude the optional runtime dump collector from both files and dependency metadata. -->
+  <Target Name="ExcludeOptionalRuntimeDumpCollector"
+          AfterTargets="ResolveRuntimePackAssets"
+          Condition="'$(SelfContained)' == 'true'">
+    <ItemGroup>
+      <RuntimePackAsset Remove="@(RuntimePackAsset)"
+                        Condition="'%(RuntimePackAsset.Filename)%(RuntimePackAsset.Extension)' == 'createdump.exe'" />
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)"
+                              Condition="'%(ReferenceCopyLocalPaths.Filename)%(ReferenceCopyLocalPaths.Extension)' == 'createdump.exe'" />
+    </ItemGroup>
+  </Target>
+</Project>
