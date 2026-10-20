@@ -1,13 +1,16 @@
-# Orbit Lab
+# wpf-satellite-tracking
 
 ![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4)
 ![WPF](https://img.shields.io/badge/UI-WPF%20Viewport3D-0078D4)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey)
 ![Offline](https://img.shields.io/badge/runtime-offline-success)
 
-An interactive 3D demo of the Earth, a 50-satellite constellation, three ground stations and the Solar System,
-built with **nothing but WPF's built-in `Viewport3D`** — no Unity, no HelixToolkit, no third-party NuGet packages.
-The app never touches the network at runtime; all imagery is bundled.
+**Satellite orbits and ground-station antenna tracking, simulated with nothing but WPF's built-in `Viewport3D`** —
+no Unity, no HelixToolkit, no third-party NuGet packages.
+
+Fifty satellites fly repeat ground tracks over three ground stations; each station picks its own satellite, slews its
+antenna onto it, holds the link through the pass and parks at zenith afterwards. The Solar System view is included as a
+rendering stress test for `Viewport3D`. The app never touches the network at runtime; all imagery is bundled.
 
 > **Disclaimer** — Orbits, constellation layout, ground-station locations and sensor fields of view are
 > illustrative values made up for this demo. They do not describe any real mission, spacecraft or facility.
@@ -73,21 +76,21 @@ The app never touches the network at runtime; all imagery is bundled.
 ### Build and run from source
 
 ```powershell
-git clone https://github.com/Song-Sungyoub/OrbitLab.git
-cd OrbitLab
-dotnet build .\OrbitLab.sln -c Release
-dotnet run --project .\WpfOrbitDemo\WpfOrbitDemo.csproj -c Release
+git clone https://github.com/Song-Sungyoub/wpf-satellite-tracking.git
+cd wpf-satellite-tracking
+dotnet build .\WpfSatelliteTracking.sln -c Release
+dotnet run --project .\WpfSatelliteTracking\WpfSatelliteTracking.csproj -c Release
 ```
 
-Or open `OrbitLab.sln` in Visual Studio 2022 (17.12+) and run the `WpfOrbitDemo` project.
+Or open `WpfSatelliteTracking.sln` in Visual Studio 2022 (17.12+) and run the `WpfSatelliteTracking` project.
 
 ### Self-contained build (runs without .NET installed)
 
 ```powershell
-dotnet publish .\WpfOrbitDemo\WpfOrbitDemo.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o .\Published
+dotnet publish .\WpfSatelliteTracking\WpfSatelliteTracking.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o .\Published
 ```
 
-Copy the whole `Published` folder to the target PC and run `WpfOrbitDemo.exe`.
+Copy the whole `Published` folder to the target PC and run `WpfSatelliteTracking.exe`.
 `Directory.Build.targets` excludes the optional `createdump.exe` from the output.
 
 ## Usage
@@ -108,16 +111,16 @@ Copy the whole `Published` folder to the target PC and run `WpfOrbitDemo.exe`.
 ## Project structure
 
 ```
-OrbitLab/
-├─ OrbitLab.sln
+wpf-satellite-tracking/
+├─ WpfSatelliteTracking.sln
 ├─ Directory.Build.targets         # trims createdump.exe from self-contained output
-├─ WpfOrbitDemo/                   # the application
+├─ WpfSatelliteTracking/                   # the application
 │  ├─ ViewModels/MainViewModel.cs  # UI state, commands, scene assembly, per-frame update (single VM, MVVM)
 │  ├─ Models/                      # orbits, constellation, Sun & planets, visibility, station scheduling, map tiles
 │  ├─ Rendering/                   # meshes, materials, joints, batching, coverage, planet surfaces
 │  ├─ Assets/                      # Earth day/night maps, regional tile ZIP (embedded in the DLL)
 │  └─ build_assets/                # offline tile preparation script (never run by the app or the build)
-└─ WpfOrbitDemo.Checks/            # functional checks (opens a window and writes PNGs — run manually)
+└─ WpfSatelliteTracking.Checks/            # functional checks (opens a window and writes PNGs — run manually)
 ```
 
 ## How it works
@@ -139,8 +142,8 @@ If you change the ground stations, edit `STATIONS` in `build_assets/prepare_offl
 `Assets/offline-map-tiles.zip` away and run the script (Python 3 + Pillow). Only this step downloads from NASA GIBS.
 
 ```powershell
-python .\WpfOrbitDemo\build_assets\prepare_offline_tiles.py              # build the ZIP if missing, then verify
-python .\WpfOrbitDemo\build_assets\prepare_offline_tiles.py --verify-only  # verify only, no network
+python .\WpfSatelliteTracking\build_assets\prepare_offline_tiles.py              # build the ZIP if missing, then verify
+python .\WpfSatelliteTracking\build_assets\prepare_offline_tiles.py --verify-only  # verify only, no network
 ```
 
 Rebuild the app afterwards — the ZIP is embedded as a resource.
