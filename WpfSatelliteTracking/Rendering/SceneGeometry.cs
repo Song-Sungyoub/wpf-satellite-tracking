@@ -96,35 +96,6 @@ public static class SceneGeometry
         return model;
     }
 
-    public static GeometryModel3D Orbit(CircularOrbit orbit, Color color, bool fullRing = false)
-    {
-        var mesh = new MeshGeometry3D();
-        const int steps = 512, sides = 6;
-        double gap = fullRing ? 0 : 0.16;
-        for (int s = 0; s <= steps; s++)
-        {
-            double angle = orbit.InitialPhaseDegrees * Math.PI / 180 + gap + s * (Math.PI * 2 - 2 * gap) / steps;
-            var p = Point(orbit.PositionAtAngle(angle));
-            var radial = (Vector3D)p; radial.Normalize();
-            var tangent = Point(orbit.PositionAtAngle(angle + 0.001)) - p; tangent.Normalize();
-            var normal = Vector3D.CrossProduct(radial, tangent); normal.Normalize();
-            for (int j = 0; j < sides; j++)
-            {
-                double t = j * 2 * Math.PI / sides;
-                mesh.Positions.Add(p + 0.003 * (radial * Math.Cos(t) + normal * Math.Sin(t)));
-            }
-        }
-        for (int s = 0; s < steps; s++)
-            for (int j = 0; j < sides; j++)
-            {
-                int a = s * sides + j, b = s * sides + (j + 1) % sides;
-                foreach (int k in new[] { a, b, a + sides, b, b + sides, a + sides }) mesh.TriangleIndices.Add(k);
-            }
-        mesh.Freeze();
-        var material = MarkerMaterial(color);
-        return new GeometryModel3D(mesh, material) { BackMaterial = material };
-    }
-
     public static Point3D Point((double X, double Y, double Z) value) => new(value.X, value.Y, value.Z);
 
     public static GeometryModel3D PlanetOrbit((double X, double Y, double Z)[] path, Color color)
@@ -328,39 +299,6 @@ public static class SceneGeometry
         return result;
     }
 
-    internal static Model3DGroup MergeSatelliteParts(Model3DGroup satellite)
-    {
-        var meshes = new Dictionary<(Material Front, Material? Back), MeshGeometry3D>();
-        void AppendParts(Model3D part, Matrix3D parent)
-        {
-            var matrix = part.Transform.Value; matrix.Append(parent);
-            if (part is Model3DGroup group)
-            {
-                foreach (var child in group.Children) AppendParts(child, matrix);
-                return;
-            }
-            var model = (GeometryModel3D)part;
-            var source = (MeshGeometry3D)model.Geometry;
-            var key = (model.Material, model.BackMaterial ?? model.Material);
-            if (!meshes.TryGetValue(key, out var mesh)) meshes.Add(key, mesh = new MeshGeometry3D());
-            int start = mesh.Positions.Count;
-            foreach (var p in source.Positions) mesh.Positions.Add(matrix.Transform(p));
-            foreach (int index in source.TriangleIndices) mesh.TriangleIndices.Add(start + index);
-            for (int i = 0; i < source.Positions.Count; i++)
-                mesh.TextureCoordinates.Add(source.TextureCoordinates.Count == source.Positions.Count ? source.TextureCoordinates[i] : new Point());
-            // WPF regenerates normals for the merged mesh; face-split box vertices preserve hard edges.
-        }
-        AppendParts(satellite, Matrix3D.Identity);
-        var result = new Model3DGroup();
-        foreach (var (material, mesh) in meshes)
-        {
-            mesh.Freeze();
-            result.Children.Add(new GeometryModel3D(mesh, material.Front) { BackMaterial = material.Back });
-        }
-        result.Freeze();
-        return result;
-    }
-
     internal static Material SatelliteSurface(Brush brush, bool eclipsed)
     {
         var material = new MaterialGroup();
@@ -400,9 +338,6 @@ public static class SceneGeometry
         return new Matrix3D(right.X, right.Y, right.Z, 0, up.X, up.Y, up.Z, 0,
             forward.X, forward.Y, forward.Z, 0, position.X, position.Y, position.Z, 1);
     }
-
-    public static Model3DGroup Antenna(GroundStation station)
-        => new GroundAntennaGeometry(station).Model;
 
     internal static GeometryModel3D Lathe((double Radius, double Height)[] profile, Material material, int sides = 32)
     {

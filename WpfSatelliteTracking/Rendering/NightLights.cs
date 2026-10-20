@@ -18,7 +18,6 @@ public sealed class NightLights : IDisposable
     private readonly CancellationTokenSource cancellation = new();
     private int version;
     private bool disposed;
-    private readonly Func<WriteableBitmap, bool> tryLock;
     private byte[]? pendingPixels;
     private DateTimeOffset pendingTime;
     public bool HasPendingUpload => pendingPixels is not null;
@@ -28,12 +27,8 @@ public sealed class NightLights : IDisposable
     public WriteableBitmap Texture { get; } = new(Width, Height, 96, 96, PixelFormats.Pbgra32, null);
     public GeometryModel3D Model { get; }
 
-    public NightLights() : this(null) { }
-
-    // The internal lock seam lets regression checks simulate a busy GPU without stressing the user's GPU.
-    internal NightLights(Func<WriteableBitmap, bool>? acquireBuffer)
+    public NightLights()
     {
-        tryLock = acquireBuffer ?? (bitmap => bitmap.TryLock(new Duration(TimeSpan.Zero)));
         var image = new BitmapImage(); image.BeginInit();
         image.UriSource = new Uri("pack://application:,,,/WpfSatelliteTracking;component/Assets/earth-night.jpg");
         image.DecodePixelWidth = Width; image.EndInit(); image.Freeze();
@@ -96,7 +91,7 @@ public sealed class NightLights : IDisposable
     {
         if (disposed || pendingPixels is null) return false;
         // WritePixels implicitly waits forever for the render thread. Never wait for a GPU copy on the UI thread.
-        if (!tryLock(Texture))
+        if (!Texture.TryLock(new Duration(TimeSpan.Zero)))
         {
             return false;
         }
