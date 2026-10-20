@@ -180,6 +180,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool showOrbits = true, showClouds = true, showAtmosphere = true, showNightLights = true, showStars = true,
         showMoon = true, showSatelliteLabels = true, animateAllSatellites, tilesShown;
     public bool ShowOrbits { get => showOrbits; set { if (SetFlag(ref showOrbits, value)) UpdateOrbitMaterials(); } }
+    private bool showAllOrbits;
+    public bool ShowAllOrbits { get => showAllOrbits; set { if (SetFlag(ref showAllOrbits, value)) UpdateOrbitMaterials(); } }
     public bool ShowClouds { get => showClouds; set { if (SetFlag(ref showClouds, value)) ApplyGlobalLayers(); } }
     public bool ShowNightLights
     {
@@ -886,7 +888,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             bool selected = representative == selectedIndex || Orbits[representative].SharesPlaneWith(SelectedOrbit);
             double brightness = selected ? 0.9 : 0.45;
             var c = colors[representative];
-            var material = followSatellite || !showOrbits ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
+            // Each satellite has its own plane (repeat ground tracks), so by default only the selected group's rings show.
+            var material = followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
             orbitModels[i].Material = material; orbitModels[i].BackMaterial = material;
         }
     }

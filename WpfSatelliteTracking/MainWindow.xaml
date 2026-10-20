@@ -432,7 +432,8 @@
                 <Expander Header="표시 · 부하 조절" Style="{StaticResource Section}">
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
-                            <CheckBox Content="궤도선" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,7"/>
+                            <CheckBox Content="궤도선 (선택 위성의 궤도군)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,7"/>
+                            <CheckBox Content="모든 궤도군 궤도선" IsChecked="{Binding ShowAllOrbits}" Margin="24,0,0,7"/>
                             <CheckBox Content="지상궤적 (수신소 중심을 지나는 반복 궤적)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,7"/>
                             <CheckBox Content="위성 이름표" IsChecked="{Binding ShowSatelliteLabels}" Margin="0,0,0,7"/>
                             <CheckBox Content="모든 위성 날개·접시 움직임" IsChecked="{Binding AnimateAllSatellites}" Margin="0,0,0,2"

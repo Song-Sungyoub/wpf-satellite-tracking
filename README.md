@@ -60,7 +60,9 @@ rendering stress test for `Viewport3D`. The app never touches the network at run
 
 **Viewer**
 - True-scale and observation-scale modes, focus on satellites / stations / bodies, time travel and up to 600× playback
-- Display & load toggles (orbits, ground track, labels, clouds, atmosphere, night lights, stars, Moon)
+- Display & load toggles (orbits, ground track, labels, clouds, atmosphere, night lights, stars, Moon). Because every
+  satellite has its own orbital plane, only the selected satellite's group of rings is drawn by default; "all orbit
+  groups" shows all 50
 - Full-screen 3D view (**F11** / **Esc**) and a built-in frame-timing meter
 
 ## Requirements
