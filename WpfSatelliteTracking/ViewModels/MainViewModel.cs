@@ -513,7 +513,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         earthSystem.Children.Add(nightLights.Model);
         var cloudAsset = SceneGeometry.Clouds();
         clouds = new GeometryModel3D(cloudAsset.Geometry, cloudAsset.Material); cloudMaterial = clouds.Material; earthSystem.Children.Add(clouds);
-        earthSystem.Children.Add(groundTrackHost); // last: Checks index earth-system children by position
+        earthSystem.Children.Add(groundTrackHost); // last, so the earlier earth-system child indices stay stable
         Scene.Children.Add(earthSystem);
         Scene.Children.Add(SceneGeometry.SpaceBackground());
         var orbitLayer = new Model3DGroup();

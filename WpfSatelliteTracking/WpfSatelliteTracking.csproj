@@ -8,5 +8,4 @@
   </PropertyGroup>
   <ItemGroup><Resource Include="Assets/*.jpg" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="Assets/offline-map-tiles.zip" LogicalName="WpfSatelliteTracking.OfflineMapTiles" /></ItemGroup>
-  <ItemGroup><InternalsVisibleTo Include="WpfSatelliteTracking.Checks" /></ItemGroup>
 </Project>

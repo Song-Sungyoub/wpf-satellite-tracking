@@ -116,13 +116,12 @@ Copy the whole `Published` folder to the target PC and run `WpfSatelliteTracking
 wpf-satellite-tracking/
 ├─ WpfSatelliteTracking.sln
 ├─ Directory.Build.targets         # trims createdump.exe from self-contained output
-├─ WpfSatelliteTracking/                   # the application
-│  ├─ ViewModels/MainViewModel.cs  # UI state, commands, scene assembly, per-frame update (single VM, MVVM)
-│  ├─ Models/                      # orbits, constellation, Sun & planets, visibility, station scheduling, map tiles
-│  ├─ Rendering/                   # meshes, materials, joints, batching, coverage, planet surfaces
-│  ├─ Assets/                      # Earth day/night maps, regional tile ZIP (embedded in the DLL)
-│  └─ build_assets/                # offline tile preparation script (never run by the app or the build)
-└─ WpfSatelliteTracking.Checks/            # functional checks (opens a window and writes PNGs — run manually)
+└─ WpfSatelliteTracking/           # the application
+   ├─ ViewModels/MainViewModel.cs  # UI state, commands, scene assembly, per-frame update (single VM, MVVM)
+   ├─ Models/                      # orbits, constellation, Sun & planets, visibility, station scheduling, map tiles
+   ├─ Rendering/                   # meshes, materials, joints, batching, coverage, planet surfaces
+   ├─ Assets/                      # Earth day/night maps, regional tile ZIP (embedded in the DLL)
+   └─ build_assets/                # offline tile preparation script (never run by the app or the build)
 ```
 
 ## How it works
