@@ -4,6 +4,7 @@ using SGPdotNET.TLE;
 namespace WpfSatelliteTracking.Models;
 
 public enum SatelliteMission { A, B }
+public enum OrbitRegime { Leo, Meo, Geo }
 
 // UTC -> SGP4 TEME kilometers -> right-handed WPF scene (X, Z, -Y), in Earth radii.
 // Mission selects an illustrative mesh/sensor only; it is not inferred mission metadata.
@@ -24,6 +25,8 @@ public sealed class SatelliteOrbit
     public double InitialPhaseDegrees => Elements.MeanAnomaly.Degrees;
     public double PeriodSeconds => 86400 / Elements.MeanMotionRevPerDay;
     public double AltitudeKm => (Radius - 1) * EarthRadiusKm;
+    // By mean altitude and period; inclined geosynchronous orbits (e.g. QZSS) count as GEO.
+    public OrbitRegime Regime => AltitudeKm < 2000 ? OrbitRegime.Leo : Math.Abs(PeriodSeconds - 86164) < 8640 ? OrbitRegime.Geo : OrbitRegime.Meo;
     public double Radius => Math.Cbrt(398600.8 * Math.Pow(PeriodSeconds / (2 * Math.PI), 2)) / EarthRadiusKm;
 
     public SatelliteOrbit(string name, string line1, string line2, SatelliteMission mission = SatelliteMission.B)

@@ -389,9 +389,18 @@
                                         ToolTip="다른 TLE 파일을 새 창으로 엽니다."/>
                                 <TextBlock Text="{Binding CatalogSummary}" Foreground="#65DEE0" VerticalAlignment="Center"/>
                             </DockPanel>
-                            <ListBox ItemsSource="{Binding SatellitesView}" SelectedItem="{Binding SelectedOrbit}" MaxHeight="200" Background="#0B1426" BorderThickness="0" Foreground="#E7EEF8" Margin="0,0,0,8" AutomationProperties.Name="위성 선택">
+                            <WrapPanel Margin="10,0,0,6">
+                                <CheckBox Content="All" IsChecked="{Binding AllSatellitesChecked}" Margin="0,0,14,4" ToolTip="모든 위성 표시 / 해제 · 해제한 위성은 화면과 수신소 추적에서 빠집니다."/>
+                                <CheckBox Content="{Binding LeoLabel}" IsChecked="{Binding LeoChecked}" Margin="0,0,14,4" ToolTip="저궤도 (고도 2,000 km 미만) · 수신소 자동 추적 대상"/>
+                                <CheckBox Content="{Binding MeoLabel}" IsChecked="{Binding MeoChecked}" Margin="0,0,14,4" ToolTip="중궤도 (GPS · Galileo) · 선택했을 때만 수신소가 추적"/>
+                                <CheckBox Content="{Binding GeoLabel}" IsChecked="{Binding GeoChecked}" Margin="0,0,14,4" ToolTip="정지궤도 · 경사 동기궤도 (QZSS) · 휠로 멀리 축소해서 보세요. 선택했을 때만 수신소가 추적"/>
+                            </WrapPanel>
+                            <ListBox ItemsSource="{Binding SatelliteItems}" SelectedItem="{Binding SelectedSatelliteItem}" MaxHeight="200" Background="#0B1426" BorderThickness="0" Foreground="#E7EEF8" Margin="0,0,0,8" AutomationProperties.Name="위성 선택">
                                 <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="10,4"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/></DataTemplate></ListBox.ItemTemplate>
+                                <ListBox.ItemTemplate><DataTemplate><DockPanel>
+                                    <CheckBox IsChecked="{Binding IsChecked}" VerticalAlignment="Center" Margin="0,0,6,0" AutomationProperties.Name="{Binding Name}"/>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                                </DockPanel></DataTemplate></ListBox.ItemTemplate>
                             </ListBox>
                             <TextBlock Text="{Binding SelectedOrbit.Name}" FontWeight="SemiBold"/>
                             <TextBlock Text="{Binding SelectedInfo}" TextWrapping="Wrap" Foreground="#B7CCE5" FontSize="11" LineHeight="18" Margin="0,2,0,0"
@@ -405,9 +414,9 @@
                             <TextBlock Text="{Binding CommunicationStatus}" Foreground="#B7CCE5" FontSize="11" TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,8"
                                        ToolTip="수신소마다 고각 10° 이상인 서로 다른 위성을 추적하고, 통과 후 천정으로 돌아갑니다. 좌표는 도시 대표 좌표입니다."/>
                             <CheckBox Content="통신선 · 송수신 펄스" IsChecked="{Binding ShowCommunications}" Margin="0,0,0,6"
-                                      ToolTip="안테나가 위성을 포착하면 통신선을 그립니다. 흰 펄스: 송신 / 파란 펄스: 수신"/>
+                                      ToolTip="안테나가 위성을 포착하면 통신선을 그립니다. S밴드 (고각 5° 이상, 명령·상태): 통신선 + 흰/파란 펄스 · X밴드 (고각 10° 이상, 데이터 다운링크): 금색 펄스 · 밴드 배정은 모든 위성에 같은 예시 규칙"/>
                             <CheckBox Content="수신소 커버리지" IsChecked="{Binding ShowCoverage}" Margin="0,0,0,8"
-                                      ToolTip="수신소별 고각 10° 이상 가시 원뿔과 지상 커버리지를 표시합니다."/>
+                                      ToolTip="수신소별 고각 10° 이상 가시 원뿔과 지상 커버리지를 표시합니다. 색: 대전 초록 · 오사카 주황 · 상하이 보라 (통신선도 같은 색)"/>
                             <Button Content="선택 위성 다음 통과 계산" Command="{Binding PredictPassesCommand}" Style="{StaticResource PanelButton}"/>
                             <TextBlock Text="{Binding PassPredictionStatus}" TextWrapping="Wrap" FontSize="11" Foreground="#B7CCE5" Margin="0,0,0,6">
                                 <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>

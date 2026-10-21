@@ -4,7 +4,9 @@
 
 ## Tracking data
 
-`WpfSatelliteTracking/Assets/satellites.tle` contains 50 LEO weather satellites from [CelesTrak](https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle), retrieved 2026-10-20 (metadata in `Assets/tle-source.json`). It is a snapshot, not a live feed or a guarantee that a spacecraft is active.
+`WpfSatelliteTracking/Assets/satellites.tle` contains 65 satellites from [CelesTrak](https://celestrak.org/) retrieved 2026-10-21 (metadata in `Assets/tle-source.json`): 40 LEO and 12 geostationary weather satellites (`GROUP=weather`), plus 6 GPS, 4 Galileo and 3 QZSS navigation satellites (`GROUP=gnss`) for medium and geosynchronous orbits. It is a snapshot, not a live feed or a guarantee that a spacecraft is active.
+
+Satellites are grouped by mean altitude/period into LEO (< 2,000 km), MEO and GEO (geosynchronous period, including inclined QZSS orbits).
 
 - **TLE 불러오기** validates another 2-line/3-line TLE file and opens it in a new app window.
 - Alternatively place `satellites.tle` next to the executable, or run `WpfSatelliteTracking.exe --tle path/to/catalog.tle`.
@@ -26,8 +28,8 @@ Simulation time is limited to the common ±7-day window of the loaded TLEs. This
 Side panel:
 
 - **시간**: simulation time, real-time button, playback speed, and a KST date/time input.
-- **위성**: satellite list and selected satellite summary (NORAD ID, altitude, inclination, TLE epoch age, sunlit/eclipsed).
-- **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai; link/pulse and coverage toggles; next-pass prediction for the selected satellite; jump to the next contact.
+- **위성**: checkable satellite list with **All** and LEO/MEO/GEO group toggles (unchecked satellites are hidden and not tracked; the selected one is always shown), and the selected satellite summary (orbit class, NORAD ID, altitude, inclination, TLE epoch age, sunlit/eclipsed).
+- **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai (S or S·X contact); link/pulse and coverage toggles (one color per station); next-pass prediction with S- and X-band windows for the selected satellite; jump to the next contact.
 - **표시**: orbit and ground track (10-minute KST time labels) for the selected satellite or, with **모든 위성에 적용**, for all satellites; labels, Earth-fixed camera, and Earth environment layers.
 - **예측 검증** (collapsed): pin a forecast ground point at a future time and replay to that exact moment.
 - **태양계 · 성능 테스트** (collapsed): scale modes, Solar System views, articulation toggle and frame timing. The Solar System exists only as a rendering stress test.
@@ -38,7 +40,9 @@ Viewport:
 - **위성 모델 보기**: follows the selected spacecraft.
 - Mouse drag rotates (pans in a regional close-up); wheel zooms. F11 toggles full-screen 3D; Esc exits.
 
-Ground network: each station tracks a different satellite above a 10° mask, keeps its lock while visible, slews at a fixed rate and parks at zenith when idle. Links are drawn only once the antenna is on target. This is greedy scheduling, not a mission planner.
+Ground network: each station tracks a different satellite, keeps its lock while visible, slews at a fixed rate and parks at zenith when idle. Checked LEO satellites are tracked automatically; MEO/GEO satellites stay in view for hours, so they are tracked only when selected. Links are drawn only once the antenna is on target. This is greedy scheduling, not a mission planner.
+
+Radio bands are an **illustrative rule applied alike to every satellite** (real band assignments are not in TLEs): S-band TT&C from 5° elevation (link line with white/blue pulses) and X-band data downlink from 10° (gold pulses). No frequencies, data rates or link budgets are modelled. Coverage cones use the 10° mask up to the highest LEO shell.
 
 By default the selected satellite shows its future one-revolution orbit in inertial space at its altitude, regenerated from SGP4 as it advances. The optional green ground track projects the same future path onto the Earth; each sample uses its own future GMST.
 

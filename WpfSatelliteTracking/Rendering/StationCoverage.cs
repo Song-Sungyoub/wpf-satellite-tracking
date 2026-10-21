@@ -9,16 +9,19 @@ namespace WpfSatelliteTracking.Rendering;
 // Geometry only; brightens while a satellite is inside. Illustrative mask (no terrain, no antenna slew limits).
 internal sealed class StationCoverage
 {
-    private static readonly Color Tint = Color.FromRgb(70, 240, 180);
+    // One tint per station (by index) so overlapping cones, footprints and links can be told apart.
+    public static readonly Color[] StationTints = [Color.FromRgb(70, 240, 180), Color.FromRgb(255, 170, 70), Color.FromRgb(190, 140, 255)];
     // Light veils: the camera often sits inside all three overlapping cones in the ground-station view.
-    private static readonly Material IdleCone = Glow(60), ActiveCone = Glow(150), IdleRim = Glow(110), ActiveRim = Glow(230),
-        IdleFootprint = Glow(12), ActiveFootprint = Glow(26);
+    private readonly Material IdleCone, ActiveCone, IdleRim, ActiveRim, IdleFootprint, ActiveFootprint;
     private readonly GeometryModel3D cone, rim, footprint, footprintRim;
     private bool? active;
     public Model3DGroup Model { get; } = new();
 
     public StationCoverage(GroundStation station, double shellRadius, double footprintAltitudeKm, int layer = 0)
     {
+        var tint = StationTints[layer % StationTints.Length];
+        (IdleCone, ActiveCone, IdleRim, ActiveRim, IdleFootprint, ActiveFootprint)
+            = (Glow(tint, 60), Glow(tint, 150), Glow(tint, 110), Glow(tint, 230), Glow(tint, 12), Glow(tint, 26));
         double lift = 0.0006 * layer; // separate overlapping footprints of neighbouring stations (no z-fighting)
         double lat = station.Latitude * Math.PI / 180, lon = station.Longitude * Math.PI / 180;
         var up = new Vector3D(Math.Cos(lat) * Math.Cos(lon), Math.Sin(lat), -Math.Cos(lat) * Math.Sin(lon));
@@ -105,12 +108,12 @@ internal sealed class StationCoverage
         footprintRim.Material = footprintRim.BackMaterial = value ? ActiveRim : IdleRim;
     }
 
-    private static Material Glow(byte alpha)
+    private static Material Glow(Color tint, byte alpha)
     {
         // Transparent diffuse + emissive (as the atmosphere): a black or missing diffuse layer darkens what is seen through the veil.
         var material = new MaterialGroup();
         material.Children.Add(new DiffuseMaterial(Brushes.Transparent));
-        material.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(alpha, Tint.R, Tint.G, Tint.B))));
+        material.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(alpha, tint.R, tint.G, tint.B))));
         material.Freeze(); return material;
     }
 }
@@ -120,37 +123,53 @@ internal sealed class CoverageLinks
 {
     private readonly Model3DGroup[] links;
     private readonly MatrixTransform3D[] lines, uplinks, downlinks;
+    private readonly Model3DGroup[] xBand;
+    private readonly MatrixTransform3D[][] xPulses;
     public Model3DGroup Scene { get; } = new();
 
     public CoverageLinks(int stationCount)
     {
         links = new Model3DGroup[stationCount];
         lines = new MatrixTransform3D[stationCount]; uplinks = new MatrixTransform3D[stationCount]; downlinks = new MatrixTransform3D[stationCount];
-        var lineMaterial = Glow(Color.FromRgb(70, 240, 180)); var up = Glow(Colors.White); var down = Glow(Colors.DeepSkyBlue);
+        xBand = new Model3DGroup[stationCount]; xPulses = new MatrixTransform3D[stationCount][];
+        var gold = Glow(Color.FromRgb(255, 200, 60));
+        var up = Glow(Colors.White); var down = Glow(Colors.DeepSkyBlue);
         var cylinder = Cylinder(); var sphere = (MeshGeometry3D)SceneGeometry.Sphere(1, up, 10, 6).Geometry;
         for (int i = 0; i < stationCount; i++)
         {
             lines[i] = new(); uplinks[i] = new(); downlinks[i] = new();
             links[i] = new Model3DGroup();
+            var lineMaterial = Glow(StationCoverage.StationTints[i % StationCoverage.StationTints.Length]);
             links[i].Children.Add(new GeometryModel3D(cylinder, lineMaterial) { BackMaterial = lineMaterial, Transform = lines[i] });
             links[i].Children.Add(new GeometryModel3D(sphere, up) { Transform = uplinks[i] });
             links[i].Children.Add(new GeometryModel3D(sphere, down) { Transform = downlinks[i] });
+            // X-band: three gold downlink pulses (satellite -> ground) while the elevation allows it.
+            xBand[i] = new Model3DGroup(); xPulses[i] = new MatrixTransform3D[3];
+            for (int k = 0; k < 3; k++) { xPulses[i][k] = new(); xBand[i].Children.Add(new GeometryModel3D(sphere, gold) { Transform = xPulses[i][k] }); }
         }
     }
 
-    public void Update(int station, Point3D ground, Point3D? satellite, double animationSeconds, double cameraDistance)
+    public void Update(int station, Point3D ground, Point3D? satellite, double animationSeconds, double cameraDistance, bool xBandActive = false)
     {
         bool present = Scene.Children.Contains(links[station]);
+        bool xPresent = links[station].Children.Contains(xBand[station]);
         if (satellite is not Point3D target)
         {
             if (present) Scene.Children.Remove(links[station]);
             return;
         }
         if (!present) Scene.Children.Add(links[station]);
+        if (xBandActive != xPresent) { if (xBandActive) links[station].Children.Add(xBand[station]); else links[station].Children.Remove(xBand[station]); }
         double width = Math.Clamp(cameraDistance * 0.0006, 0.00004, 0.0025), phase = (animationSeconds * 0.8 + station * 0.31) % 1;
         lines[station].Matrix = Segment(ground, target, width);
         uplinks[station].Matrix = Pulse(ground + (target - ground) * phase, width * 3);
         downlinks[station].Matrix = Pulse(ground + (target - ground) * (1 - phase), width * 3);
+        if (!xBandActive) return;
+        for (int k = 0; k < 3; k++)
+        {
+            double t = (animationSeconds * 1.6 + k / 3.0 + station * 0.17) % 1;
+            xPulses[station][k].Matrix = Pulse(target + (ground - target) * t, width * 3.4);
+        }
     }
 
     private static Matrix3D Pulse(Point3D p, double radius) => new(radius, 0, 0, 0, 0, radius, 0, 0, 0, 0, radius, 0, p.X, p.Y, p.Z, 1);

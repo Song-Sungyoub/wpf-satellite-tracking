@@ -11,6 +11,9 @@ public readonly record struct StationContact(GroundStation Station, V Position, 
 public sealed class SatelliteOperations(GroundStation[] stations)
 {
     public const double MinimumElevationDegrees = 10;
+    // Illustrative band masks, applied alike to every satellite (real band assignments are not in TLEs):
+    // S-band TT&C from 5°, X-band data downlink from 10°.
+    public const double SBandMinimumElevationDegrees = 5, XBandMinimumElevationDegrees = 10;
     public const double EarthRotationDegreesPerSecond = 360.98564736629 / 86400;
     public StationContact[] Contacts { get; } = new StationContact[stations.Length];
 
@@ -34,14 +37,14 @@ public sealed class SatelliteOperations(GroundStation[] stations)
             foreach (var station in stations)
             {
                 var time = SatelliteCatalog.ReferenceEpoch.AddSeconds(seconds + delay);
-                if (EarthCoordinates.LookAngles(station, satellite, EarthCoordinates.GmstDegrees(time)).Elevation >= MinimumElevationDegrees)
+                if (EarthCoordinates.LookAngles(station, satellite, EarthCoordinates.GmstDegrees(time)).Elevation >= SBandMinimumElevationDegrees)
                 {
                     double low = Math.Max(0, delay - 15), high = delay;
                     while (high - low > 0.1)
                     {
                         double mid = (low + high) / 2;
                         var aim = EarthCoordinates.LookAngles(station, orbit.Position(seconds + mid), EarthCoordinates.GmstDegrees(SatelliteCatalog.ReferenceEpoch.AddSeconds(seconds + mid)));
-                        if (aim.Elevation >= MinimumElevationDegrees) high = mid; else low = mid;
+                        if (aim.Elevation >= SBandMinimumElevationDegrees) high = mid; else low = mid;
                     }
                     first = first is null ? high : Math.Min(first.Value, high);
                 }

@@ -4,12 +4,12 @@ public sealed record PredictedPass(DateTimeOffset Acquisition, DateTimeOffset Pe
 
 public static class PassPredictor
 {
-    public static PredictedPass? Next(SatelliteOrbit orbit, GroundStation station, DateTimeOffset start, DateTimeOffset limit)
+    public static PredictedPass? Next(SatelliteOrbit orbit, GroundStation station, DateTimeOffset start, DateTimeOffset limit, double mask = SatelliteOperations.MinimumElevationDegrees)
     {
         double span = Math.Max(0, Math.Min(86400, (limit - start).TotalSeconds));
         double seconds = (start - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
         double Elevation(double t) => EarthCoordinates.LookAngles(station, orbit.Position(seconds + t), EarthCoordinates.GmstDegrees(start.AddSeconds(t))).Elevation;
-        const double step = 10, mask = SatelliteOperations.MinimumElevationDegrees;
+        const double step = 10;
         double Refine(double low, double high, bool rising)
         {
             while (high - low > 0.1) { double mid = (low + high) / 2; if ((Elevation(mid) >= mask) == rising) high = mid; else low = mid; }

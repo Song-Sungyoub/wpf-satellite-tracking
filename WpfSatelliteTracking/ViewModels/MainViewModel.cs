@@ -43,7 +43,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             int target = scheduler.Targets[i]; var servo = servos[i];
             string state = target < 0 ? (servo.Elevation > 89.5 ? "천정 대기" : "천정으로 복귀 중")
-                : servo.Locked ? $"교신 {Orbits[target].Name} · 고각 {scheduler.Desired[i].ElevationDegrees:0}°" : $"포착 중 {Orbits[target].Name}";
+                : servo.Locked ? $"{(scheduler.Desired[i].ElevationDegrees >= SatelliteOperations.XBandMinimumElevationDegrees ? "S·X" : "S")} 교신 {Orbits[target].Name} · 고각 {scheduler.Desired[i].ElevationDegrees:0}°" : $"포착 중 {Orbits[target].Name}";
             return $"{s.Name}: {state}";
         }));
     // Ground network: every station tracks a different satellite inside its 10° mask (see StationScheduler), slewing
@@ -60,29 +60,29 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool ShowGroundTracks { get => showGroundTracks; set { if (SetFlag(ref showGroundTracks, value)) UpdateGroundTrack(); } }
     private double trajectorySeconds = double.NaN, trajectoryWallTime = double.NegativeInfinity;
     private int trajectorySelection = -1;
-    private bool trajectoryAll;
+    private bool trajectoryAll, trajectoryGround;
     private void UpdateGroundTrack() => RefreshTrajectories(true);
     private void RefreshTrajectories(bool force = false)
     {
         if (orbitModels.Count != Orbits.Length) return;
-        if (!force && selectedIndex == trajectorySelection && trajectoryAll == showAllOrbits
+        if (!force && selectedIndex == trajectorySelection && trajectoryAll == showAllOrbits && trajectoryGround == followGroundStation
             && (Math.Abs(OrbitTime - trajectorySeconds) < 60 || clock.Elapsed.TotalSeconds - trajectoryWallTime < 1)) return;
-        trajectorySeconds = OrbitTime; trajectoryWallTime = clock.Elapsed.TotalSeconds; trajectorySelection = selectedIndex; trajectoryAll = showAllOrbits;
+        trajectorySeconds = OrbitTime; trajectoryWallTime = clock.Elapsed.TotalSeconds; trajectorySelection = selectedIndex; trajectoryAll = showAllOrbits; trajectoryGround = followGroundStation;
         groundTrackHost.Children.Clear();
         GroundTrackTimeLabels.Clear();
         groundTrackAnchors.Clear();
         double endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
         for (int i = 0; i < Orbits.Length; i++)
-            if (i == selectedIndex || showAllOrbits)
+            if (i == selectedIndex || (showAllOrbits && IsShown(i)))
                 orbitModels[i].Geometry = showOrbits && endSeconds > OrbitTime
-                    ? SceneGeometry.PredictedOrbit(Orbits[i], OrbitTime, colors[i], Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime)).Geometry
+                    ? SceneGeometry.PredictedOrbit(Orbits[i], OrbitTime, colors[i], Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime), followGroundStation ? 0.0004 : 0.0013).Geometry
                     : new MeshGeometry3D();
         if (showGroundTracks && endSeconds > OrbitTime)
             {
             if (showAllOrbits)
                 for (int i = 0; i < Orbits.Length; i++)
                 {
-                    if (i == selectedIndex) continue;
+                    if (i == selectedIndex || !IsShown(i)) continue;
                     var color = colors[i];
                     var muted = Color.FromRgb((byte)(color.R * 0.65), (byte)(color.G * 0.65), (byte)(color.B * 0.65));
                     groundTrackHost.Children.Add(SceneGeometry.GroundTrack(Orbits[i], OrbitTime,
@@ -106,7 +106,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     private void UpdateStations(double now)
     {
-        scheduler.Update(Orbits, OrbitTime, CurrentSun.EarthRotationDegrees, selectedIndex);
+        scheduler.Update(Orbits, OrbitTime, CurrentSun.EarthRotationDegrees, selectedIndex, IsTracked);
         double wall = double.IsNaN(servoTime) ? 0 : Math.Clamp(now - servoTime, 0, 0.1);
         servoTime = now;
         for (int s = 0; s < GroundStations.Length; s++)
@@ -327,7 +327,67 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         new("상하이", 31.2304, 121.4737)
     ];
     public SatelliteOrbit[] Orbits { get; } = SatelliteCatalog.Create();
-    public ICollectionView SatellitesView { get; }
+    // Checked satellites are drawn, labelled and tracked; the selected one is always shown.
+    private readonly bool[] satelliteEnabled;
+    private bool IsShown(int index) => satelliteEnabled[index] || index == selectedIndex;
+    // Stations auto-track checked LEO satellites (MEO/GEO stay in view for hours); the selected satellite is always eligible.
+    private bool IsTracked(int index) => index == selectedIndex || (satelliteEnabled[index] && Orbits[index].Regime == OrbitRegime.Leo);
+    public static string RegimeName(OrbitRegime regime) => regime switch { OrbitRegime.Leo => "저궤도", OrbitRegime.Meo => "중궤도", _ => "정지궤도" };
+    private int RegimeCount(OrbitRegime regime) => Orbits.Count(o => o.Regime == regime);
+    private bool? RegimeChecked(OrbitRegime regime)
+    {
+        var states = Orbits.Select((o, i) => (o, i)).Where(x => x.o.Regime == regime).Select(x => satelliteEnabled[x.i]).ToArray();
+        return states.Length == 0 ? false : states.All(e => e) ? true : states.Any(e => e) ? null : false;
+    }
+    private void SetRegime(OrbitRegime regime, bool? value)
+    {
+        bool on = value ?? true;
+        if (!on && RegimeChecked(regime) is null) on = true;
+        for (int i = 0; i < Orbits.Length; i++) if (Orbits[i].Regime == regime) SetSatelliteEnabled(i, on, false);
+        OnSatelliteSetChanged();
+    }
+    public bool? LeoChecked { get => RegimeChecked(OrbitRegime.Leo); set => SetRegime(OrbitRegime.Leo, value); }
+    public bool? MeoChecked { get => RegimeChecked(OrbitRegime.Meo); set => SetRegime(OrbitRegime.Meo, value); }
+    public bool? GeoChecked { get => RegimeChecked(OrbitRegime.Geo); set => SetRegime(OrbitRegime.Geo, value); }
+    public string LeoLabel => $"저궤도 {RegimeCount(OrbitRegime.Leo)}";
+    public string MeoLabel => $"중궤도 {RegimeCount(OrbitRegime.Meo)}";
+    public string GeoLabel => $"정지궤도 {RegimeCount(OrbitRegime.Geo)}";
+    public SatelliteItem[] SatelliteItems { get; }
+    public sealed class SatelliteItem(MainViewModel owner, int index) : INotifyPropertyChanged
+    {
+        public SatelliteOrbit Orbit => owner.Orbits[index];
+        public string Name => Orbit.Name;
+        public bool IsChecked { get => owner.satelliteEnabled[index]; set => owner.SetSatelliteEnabled(index, value); }
+        public event PropertyChangedEventHandler? PropertyChanged;
+        internal void NotifyChecked() => PropertyChanged?.Invoke(this, new(nameof(IsChecked)));
+    }
+    public SatelliteItem SelectedSatelliteItem { get => SatelliteItems[selectedIndex]; set { if (value is not null) SelectedOrbit = value.Orbit; } }
+    public bool? AllSatellitesChecked
+    {
+        get => satelliteEnabled.All(e => e) ? true : satelliteEnabled.Any(e => e) ? null : false;
+        set
+        {
+            // A click on the mixed state selects all (WPF would otherwise go from mixed to unchecked).
+            bool all = value ?? true;
+            if (!all && AllSatellitesChecked is null) all = true;
+            for (int i = 0; i < satelliteEnabled.Length; i++) SetSatelliteEnabled(i, all, false);
+            OnSatelliteSetChanged();
+        }
+    }
+    private void SetSatelliteEnabled(int index, bool value, bool apply = true)
+    {
+        if (satelliteEnabled[index] == value) return;
+        satelliteEnabled[index] = value; SatelliteItems[index].NotifyChecked();
+        if (apply) OnSatelliteSetChanged();
+    }
+    private void OnSatelliteSetChanged()
+    {
+        // Move the selection to a checked satellite when the selected one is unchecked.
+        if (!satelliteEnabled[selectedIndex] && Array.IndexOf(satelliteEnabled, true) is int first and >= 0) SelectedOrbit = Orbits[first];
+        Notify(nameof(AllSatellitesChecked)); Notify(nameof(CatalogSummary));
+        Notify(nameof(LeoChecked)); Notify(nameof(MeoChecked)); Notify(nameof(GeoChecked));
+        RefreshTrajectories(true); UpdateOrbitMaterials(); UpdateScene();
+    }
     public ICommand TogglePlaybackCommand { get; }
     public ICommand ResetCommand { get; }
     public ICommand FocusGroundStationsCommand { get; }
@@ -346,7 +406,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand PredictPassesCommand { get; }
     public ICommand LoadTleCommand { get; }
     public string PassPredictionStatus { get; private set; } = "";
-    public string CatalogSummary => $"공개 TLE {Orbits.Length}대";
+    public string CatalogSummary => $"공개 TLE {Orbits.Length}대 · 표시 {satelliteEnabled.Count(e => e)}대";
     public IReadOnlyList<CelestialLabel> CelestialLabels { get; } =
     [new(0, "태양", Brushes.Orange), new(1, "달", Brushes.LightGray), new(2, "수성", Brushes.Tan), new(3, "금성", Brushes.Wheat), new(4, "지구", Brushes.LightSkyBlue),
      new(5, "화성", Brushes.Coral), new(6, "목성", Brushes.Bisque), new(7, "토성", Brushes.Khaki), new(8, "천왕성", Brushes.PaleTurquoise), new(9, "해왕성", Brushes.CornflowerBlue)];
@@ -385,12 +445,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             int index = Array.IndexOf(Orbits, value);
             if (index < 0 || selectedIndex == index) return;
             selectedIndex = index; PassPredictionStatus = "선택 위성 변경 · 다음 통과를 다시 계산하세요."; Notify(nameof(PassPredictionStatus)); contactSearchMessage = "";
-            Notify(); Notify(nameof(SelectedInfo));
+            Notify(); Notify(nameof(SelectedInfo)); Notify(nameof(SelectedSatelliteItem));
             if (IsTrueScale && followSatellite) distance = SatelliteFocusDistance;
             UpdateOrbitMaterials(); UpdateGroundTrack(); UpdateScene();
         }
     }
-    public string SelectedInfo => $"NORAD {SelectedOrbit.NoradId} · 고도 {SelectedOrbit.AltitudeKm:N0} km · 경사각 {SelectedOrbit.InclinationDegrees:0.#}°\n"
+    public string SelectedInfo => $"{RegimeName(SelectedOrbit.Regime)} · NORAD {SelectedOrbit.NoradId} · 고도 {SelectedOrbit.AltitudeKm:N0} km · 경사각 {SelectedOrbit.InclinationDegrees:0.#}°\n"
         +$"TLE {SelectedOrbit.TleEpoch:MM-dd HH:mm} UTC ({(SimulationTime - SelectedOrbit.TleEpoch).TotalDays:+0.0;-0.0;0.0}일) · {(SelectedEclipsed ? "지구 그림자" : "일조")}";
     public ObservableCollection<SatelliteLabel> SatelliteLabels { get; } = [];
     public sealed class SatelliteLabel(SatelliteOrbit orbit, Brush color) : INotifyPropertyChanged
@@ -442,11 +502,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         colors = Orbits.Select(orbit => palette[orbit.NoradId % (uint)palette.Length]).ToArray();
         // One label per shared orbit plane (first member), plus the selected satellite.
         labelEligible = Enumerable.Repeat(true, Orbits.Length).ToArray();
+        satelliteEnabled = Enumerable.Repeat(true, Orbits.Length).ToArray();
+        SatelliteItems = Orbits.Select((_, i) => new SatelliteItem(this, i)).ToArray();
         eclipsed = new bool[Orbits.Length];
         satellitePhysicalScales = new double[Orbits.Length];
         wingTransforms = new MatrixTransform3D?[Orbits.Length]; dishTransforms = new MatrixTransform3D?[Orbits.Length];
         wingAngles = new double[Orbits.Length];
-        SatellitesView = CollectionViewSource.GetDefaultView(Orbits);
         labelCache = Orbits.Select((orbit, i) =>
         {
             var brush = new SolidColorBrush(colors[i]); brush.Freeze();
@@ -469,9 +530,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 var text = await Task.Run(() => string.Join("\n", GroundStations.Select(station =>
                 {
-                    var pass = PassPredictor.Next(orbit, station, time, SatelliteCatalog.MaximumTime);
-                    return pass is null ? $"{station.Name}: 다음 24시간/자료 범위 안 통과 없음"
-                        : $"{station.Name}: {pass.Acquisition.ToOffset(TimeSpan.FromHours(9)):MM-dd HH:mm:ss} ~ {pass.Loss.ToOffset(TimeSpan.FromHours(9)):HH:mm:ss} KST\n  최고 {pass.Peak.ToOffset(TimeSpan.FromHours(9)):HH:mm:ss} · {pass.MaxElevation:0.0}°" + (pass.AlreadyVisible ? " · 현재 가시 중" : "") + (pass.ClippedEnd ? " · 종료는 검색범위 밖" : "");
+                    var kst = TimeSpan.FromHours(9);
+                    var pass = PassPredictor.Next(orbit, station, time, SatelliteCatalog.MaximumTime, SatelliteOperations.SBandMinimumElevationDegrees);
+                    if (pass is null) return $"{station.Name}: 다음 24시간/자료 범위 안 통과 없음";
+                    if (pass.AlreadyVisible && pass.ClippedEnd) return $"{station.Name}: 검색 범위 내내 가시 · 최고 {pass.MaxElevation:0.0}°";
+                    // X-band window inside this S-band pass (10° mask), if the pass climbs that high.
+                    var x = pass.MaxElevation >= SatelliteOperations.XBandMinimumElevationDegrees
+                        ? PassPredictor.Next(orbit, station, pass.Acquisition, pass.Loss, SatelliteOperations.XBandMinimumElevationDegrees) : null;
+                    return $"{station.Name}: S {pass.Acquisition.ToOffset(kst):MM-dd HH:mm:ss} ~ {pass.Loss.ToOffset(kst):HH:mm:ss} KST · 최고 {pass.MaxElevation:0.0}°"
+                        + (pass.AlreadyVisible ? " · 현재 가시 중" : "") + (pass.ClippedEnd ? " · 종료는 검색범위 밖" : "")
+                        + (x is null ? "\n  X 없음 (고각 10° 미만)" : $"\n  X {x.Acquisition.ToOffset(kst):HH:mm:ss} ~ {x.Loss.ToOffset(kst):HH:mm:ss}");
                 })));
                 if (!disposed && orbit == SelectedOrbit)
                     PassPredictionStatus = $"{orbit.Name} · 기준 {time.ToOffset(TimeSpan.FromHours(9)):MM-dd HH:mm:ss} KST\n" + text;
@@ -655,10 +723,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         earthLocalScene.Children.Add(coverageLinks.Scene); distantScene.Children.Add(coverageLinks.Scene);
         // Coverage is added only while the mode is on, after everything else so its translucent surfaces blend last.
         coverageGroup.Transform = new RotateTransform3D(coverageRotation);
-        double highestShell = Orbits.Max(orbit => orbit.Radius);
+        // Coverage is drawn for the LEO shell; MEO/GEO cones would dwarf the globe.
+        var leo = Orbits.Where(orbit => orbit.Regime == OrbitRegime.Leo).DefaultIfEmpty(Orbits.MinBy(orbit => orbit.Radius)!).ToArray();
+        double highestShell = leo.Max(orbit => orbit.Radius);
         for (int s = 0; s < GroundStations.Length; s++)
         {
-            coverages[s] = new StationCoverage(GroundStations[s], highestShell, Orbits.Min(orbit => orbit.AltitudeKm), s);
+            coverages[s] = new StationCoverage(GroundStations[s], highestShell, leo.Min(orbit => orbit.AltitudeKm), s);
             coverageGroup.Children.Add(coverages[s].Model);
         }
         solarScene.Children.Add(solarAmbientLight);
@@ -979,10 +1049,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             int representative = orbitRepresentatives[i];
             bool selected = representative == selectedIndex;
+            if (!IsShown(representative)) { orbitModels[i].Material = orbitModels[i].BackMaterial = null; continue; }
             double brightness = selected ? 0.9 : 0.45;
             var c = colors[representative];
             // Never infer shared orbital planes from names or display models.
-            var material = followGroundStation || followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
+            var material = followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
             orbitModels[i].Material = material; orbitModels[i].BackMaterial = material;
         }
     }
@@ -1027,6 +1098,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         double focal = viewportWidth / (2 * Math.Tan(21 * Math.PI / 180));
         for (int i = 0; i < Orbits.Length; i++)
         {
+            if (!IsShown(i)) { visibleNow[i] = false; pixelSizes[i] = 0; continue; }
             var position = SceneGeometry.Point(Orbits[i].Position(OrbitTime));
             var ray = position - camera;
             double depth = Vector3D.DotProduct(ray, forward);
@@ -1087,7 +1159,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             var label = labelCache[i];
             bool representative = labelEligible[i] || i == selectedIndex;
-            if (!showSatelliteLabels || !representative || celestialOverview || followedCelestial >= 0 || (followSatellite && i != selectedIndex)) { SatelliteLabels.Remove(label); continue; }
+            if (!showSatelliteLabels || !representative || !IsShown(i) || celestialOverview || followedCelestial >= 0 || (followSatellite && i != selectedIndex)) { SatelliteLabels.Remove(label); continue; }
             var position = SceneGeometry.Point(Orbits[i].Position(OrbitTime));
             var ray = position - camera;
             double depth = Vector3D.DotProduct(ray, forward);
@@ -1142,7 +1214,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             int target = scheduler.Targets[s];
             coverageLinks.Update(s, antennaAnchors[s], links && target >= 0 && servos[s].Locked ? SceneGeometry.Point(Orbits[target].Position(OrbitTime)) : null,
-                now, CameraDirection.Length);
+                now, CameraDirection.Length, scheduler.Desired[s].ElevationDegrees >= SatelliteOperations.XBandMinimumElevationDegrees);
         }
     }
     private void NotifyCamera(bool updateTiles = true)
@@ -1186,7 +1258,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         SetViewMode(ViewMode.GroundStation);
         // The regional overview is a geographical pass forecast, just like the globe view.
-        // Inertial paths are hidden in this view (see UpdateOrbitMaterials); show the ground track instead.
+        // Show the ground track alongside the optional inertial paths in this view.
         if (station is null)
         {
             ShowGroundTracks = true;

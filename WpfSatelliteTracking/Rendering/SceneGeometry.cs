@@ -34,8 +34,8 @@ public static class SceneGeometry
     }
 
     // An open, time-stamped SGP4 path, not a fixed Keplerian ring.
-    public static GeometryModel3D PredictedOrbit(SatelliteOrbit orbit, double startSeconds, Color color, double? durationSeconds = null)
-        => Trajectory(Enumerable.Range(0, 193).Select(i => Point(orbit.Position(startSeconds + (durationSeconds ?? orbit.PeriodSeconds) * i / 192))).ToArray(), color, 0.0013);
+    public static GeometryModel3D PredictedOrbit(SatelliteOrbit orbit, double startSeconds, Color color, double? durationSeconds = null, double width = 0.0013)
+        => Trajectory(Enumerable.Range(0, 193).Select(i => Point(orbit.Position(startSeconds + (durationSeconds ?? orbit.PeriodSeconds) * i / 192))).ToArray(), color, width);
 
     // Each future point uses its OWN sidereal angle before projection onto WGS84.
     // Parent this path to earthPose once; never apply the scene's current rotation twice.

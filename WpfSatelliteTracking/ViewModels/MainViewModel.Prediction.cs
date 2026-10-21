@@ -56,7 +56,7 @@ public sealed partial class MainViewModel
         if (ShowAllOrbits)
             foreach (var orbit in Orbits)
             {
-                if (orbit == SelectedOrbit) continue;
+                if (orbit == SelectedOrbit || !IsShown(Array.IndexOf(Orbits, orbit))) continue;
                 var forecast = GroundPrediction.Create(orbit, SimulationTime, target);
                 var point = EarthCoordinates.Surface(forecast.Latitude, forecast.Longitude, 0.010*SatelliteOrbit.EarthRadiusKm);
                 var predicted = SceneGeometry.Sphere(0.0035, SceneGeometry.MarkerMaterial(Colors.Gold), 12, 6);

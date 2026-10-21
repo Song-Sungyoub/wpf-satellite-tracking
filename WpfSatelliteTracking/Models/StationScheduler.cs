@@ -1,6 +1,6 @@
 ﻿namespace WpfSatelliteTracking.Models;
 
-// Ground-network scheduling: every station talks to a different satellite inside its 10° mask. A station keeps the
+// Ground-network scheduling: every station talks to a different satellite inside its S-band (5°) mask. A station keeps the
 // satellite it is tracking until that satellite sets; free stations then take, in order, the selected satellite and
 // otherwise the highest unclaimed one. Stations without a satellite park their antenna at zenith.
 // shortcut: greedy assignment per frame; no pass planning, priorities, handover windows or link budgets.
@@ -15,7 +15,7 @@ public sealed class StationScheduler(GroundStation[] stations)
     public int[] InView { get; } = new int[stations.Length];
     public GroundAntennaAim[] Desired { get; } = new GroundAntennaAim[stations.Length];
 
-    public void Update(SatelliteOrbit[] orbits, double seconds, double earthRotationDegrees, int selected)
+    public void Update(SatelliteOrbit[] orbits, double seconds, double earthRotationDegrees, int selected, Func<int, bool>? include = null)
     {
         candidates.Clear();
         Array.Clear(InView);
@@ -28,10 +28,11 @@ public sealed class StationScheduler(GroundStation[] stations)
         Array.Clear(aims);
         Array.Clear(taken);
         Array.Clear(assigned);
-        for (int i = 0; i < orbits.Length; i++) positions[i] = orbits[i].Position(seconds);
+        for (int i = 0; i < orbits.Length; i++) if (include?.Invoke(i) != false) positions[i] = orbits[i].Position(seconds);
         for (int s = 0; s < stations.Length; s++)
             for (int i = 0; i < orbits.Length; i++)
             {
+                if (include?.Invoke(i) == false) continue;
                 var aim = GroundAntennaTracking.Calculate(stations[s], positions[i], earthRotationDegrees);
                 if (!aim.Tracking) continue;
                 aims[s, i] = aim; InView[s]++;

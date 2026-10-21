@@ -6,6 +6,6 @@ public static class GroundAntennaTracking
     public static GroundAntennaAim Calculate(GroundStation station, V satellite, double earthRotationDegrees)
     {
         var look = EarthCoordinates.LookAngles(station, satellite, earthRotationDegrees);
-        return new(look.Azimuth, look.Elevation, look.Elevation >= SatelliteOperations.MinimumElevationDegrees);
+        return new(look.Azimuth, look.Elevation, look.Elevation >= SatelliteOperations.SBandMinimumElevationDegrees);
     }
 }

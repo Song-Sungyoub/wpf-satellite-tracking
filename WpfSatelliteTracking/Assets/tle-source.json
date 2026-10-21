@@ -1,6 +1,15 @@
 {
-  "source": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
-  "retrievedUtc": "2026-10-20",
-  "selection": "weather, mean motion > 10 rev/day",
-  "count": 50
+  "sources": {
+    "weather": "https://celestrak.org/NORAD/elements/gp.php?GROUP=weather&FORMAT=tle",
+    "gnss": "https://celestrak.org/NORAD/elements/gp.php?GROUP=gnss&FORMAT=tle"
+  },
+  "retrievedUtc": "2026-10-21T02:20:38.838720+00:00",
+  "selection": "weather LEO (mean motion > 10 rev/day, first 40), weather GEO (first 12), GPS 6, Galileo 4, QZSS 3; epochs within 6.5 days",
+  "counts": {
+    "leo": 40,
+    "geo": 12,
+    "meo": 10,
+    "igso": 3
+  },
+  "count": 65
 }
