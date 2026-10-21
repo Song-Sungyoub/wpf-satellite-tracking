@@ -73,22 +73,29 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         trajectoryTask = BuildTrajectoriesAsync();
     }
     private Task trajectoryTask = Task.CompletedTask;
+    private readonly Model3DGroup orbitLayer = new();
+    private bool orbitsEarthFixed = true;
+    public bool OrbitsEarthFixed { get => orbitsEarthFixed; set { if (SetFlag(ref orbitsEarthFixed, value)) RefreshTrajectories(true); } }
     private bool trajectoryQueued;
     private async Task BuildTrajectoriesAsync()
     {
         double start = OrbitTime, endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
         double width = followGroundStation ? 0.0004 : 0.0013;
-        bool orbits = showOrbits && endSeconds > start, tracks = showGroundTracks && endSeconds > start;
+        bool orbits = showOrbits && endSeconds > start, tracks = showGroundTracks && endSeconds > start, earthFixed = orbitsEarthFixed;
         int selected = selectedIndex;
         var paths = Enumerable.Range(0, Orbits.Length).Where(i => i == selected || (showAllOrbits && IsShown(i))).ToArray();
         var otherTracks = tracks && showAllOrbits ? paths.Where(i => i != selected).ToArray() : [];
         double Duration(int i) => Math.Min(Orbits[i].PeriodSeconds, endSeconds - start);
         var result = await Task.Run(() => (
-            Orbits: paths.Select(i => (i, orbits ? SceneGeometry.PredictedOrbitMesh(Orbits[i], start, Duration(i), width) : Frozen(new MeshGeometry3D()))).ToArray(),
+            Orbits: paths.Select(i => (i, !orbits ? Frozen(new MeshGeometry3D())
+                : earthFixed ? SceneGeometry.EarthFixedOrbitMesh(Orbits[i], start, Duration(i), width)
+                : SceneGeometry.PredictedOrbitMesh(Orbits[i], start, Duration(i), width))).ToArray(),
             Tracks: otherTracks.Select(i => (i, SceneGeometry.GroundTrackMesh(Orbits[i], start, Duration(i)))).ToArray(),
             Selected: tracks ? SceneGeometry.GroundTrackMesh(Orbits[selected], start, Duration(selected)) : null));
         if (disposed) return;
         foreach (var (i, mesh) in result.Orbits) orbitModels[i].Geometry = mesh;
+        // Earth-fixed paths ride on the Earth pose (like the ground track); inertial rings stay fixed in space.
+        orbitLayer.Transform = earthFixed ? earthPose : Transform3D.Identity;
         groundTrackHost.Children.Clear();
         GroundTrackTimeLabels.Clear();
         groundTrackAnchors.Clear();
@@ -672,7 +679,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         earthSystem.Children.Add(groundTrackHost); // last, so the earlier earth-system child indices stay stable
         Scene.Children.Add(earthSystem);
         Scene.Children.Add(stars);
-        var orbitLayer = new Model3DGroup();
         var satelliteLayer = new Model3DGroup();
         Scene.Children.Add(orbitLayer); Scene.Children.Add(satelliteLayer);
         var templates = new Dictionary<(Color, SatelliteMission), (Model3DGroup Lit, Model3DGroup Shadow)>();

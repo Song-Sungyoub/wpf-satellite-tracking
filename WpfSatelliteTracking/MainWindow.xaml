@@ -428,7 +428,9 @@
                 <Expander Header="표시" Style="{StaticResource Section}">
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
-                            <CheckBox Content="궤도 (향후 1회전)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="위성 고도의 관성공간 경로 · 위성이 진행하면서 계속 새로 계산합니다."/>
+                            <CheckBox Content="궤도 (향후 1회전)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="위성 고도의 향후 경로 · 위성이 진행하면서 계속 새로 계산합니다."/>
+                            <CheckBox Content="지구 기준 (지상궤적 바로 위)" IsChecked="{Binding OrbitsEarthFixed}" Margin="20,0,0,6"
+                                      ToolTip="켜면 지구와 함께 도는 좌표로 그려 지상궤적 바로 위 위성 고도에 놓입니다 (정지궤도 위성은 거의 한 점). 끄면 우주 공간에 고정된 궤도면(관성 좌표)을 그리며, 지구가 그 아래에서 자전하므로 지상궤적과 어긋나 보입니다."/>
                             <CheckBox Content="지상궤적 (향후 1회전)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,6" ToolTip="선택 위성의 예상 지상궤적 · 초록"/>
                             <CheckBox Content="통과 시각 표시 (10분 간격)" IsChecked="{Binding ShowGroundTrackTimes}" Margin="20,0,0,6" ToolTip="지상궤적 위에 KST 시각과 위도/경도를 표시합니다."/>
                             <CheckBox Content="모든 위성에 적용" IsChecked="{Binding ShowAllOrbits}" Margin="0,0,0,6" ToolTip="켜 둔 궤도·지상궤적을 모든 위성에 대해 표시합니다. 위성 색으로 표시하고 선택 위성은 밝게(지상궤적은 초록) 표시합니다."/>

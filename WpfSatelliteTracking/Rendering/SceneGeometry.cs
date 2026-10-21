@@ -42,6 +42,13 @@ public static class SceneGeometry
 
     // Each future point uses its OWN sidereal angle before projection onto WGS84.
     // Parent this path to earthPose once; never apply the scene's current rotation twice.
+    // The same future path at orbit altitude in Earth-fixed coordinates: it lies directly above the ground track.
+    // Parent it to the Earth pose, like the ground track.
+    public static MeshGeometry3D EarthFixedOrbitMesh(SatelliteOrbit orbit, double startSeconds, double duration, double width = 0.0013)
+    {
+        int samples = Math.Max(192, (int)Math.Ceiling(duration / Math.Max(20, orbit.PeriodSeconds / 300)));
+        return TrajectoryMesh(Enumerable.Range(0, samples + 1).Select(i => Point(orbit.EarthFixedPosition(startSeconds + duration * i / samples))).ToArray(), width);
+    }
     public static GeometryModel3D GroundTrack(SatelliteOrbit orbit, double startSeconds, double duration, Color color)
         => Trajectory(GroundTrackMesh(orbit, startSeconds, duration), color);
     public static MeshGeometry3D GroundTrackMesh(SatelliteOrbit orbit, double startSeconds, double duration)

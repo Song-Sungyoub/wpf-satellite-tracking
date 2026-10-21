@@ -44,7 +44,7 @@ Ground network: each station tracks a different satellite, keeps its lock while 
 
 Radio bands are an **illustrative rule applied alike to every satellite** (real band assignments are not in TLEs): S-band TT&C from 5° elevation (link line with white/blue pulses) and X-band data downlink from 10° (gold pulses). No frequencies, data rates or link budgets are modelled. Coverage cones use the 10° mask up to the highest LEO shell.
 
-By default the selected satellite shows its future one-revolution orbit in inertial space at its altitude, regenerated from SGP4 as it advances. The optional green ground track projects the same future path onto the Earth; each sample uses its own future GMST.
+By default the selected satellite shows its future one-revolution path at orbit altitude in **Earth-fixed** coordinates, regenerated from SGP4 as it advances: it rotates with the Earth and lies directly above the ground track (a geostationary satellite stays near one point). Turning off **지구 기준** draws the inertial orbit instead, a ring fixed in space while the Earth rotates beneath it, so it drifts away from the ground track. The optional green ground track projects the same future path onto the Earth; each sample uses its own future GMST. Paths are built on a background thread.
 
 ## Build
 
