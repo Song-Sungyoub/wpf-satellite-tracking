@@ -75,8 +75,8 @@ public partial class MainWindow : Window
         }
         var chrome = enter ? Visibility.Collapsed : Visibility.Visible;
         HeaderBar.Visibility = SidePanel.Visibility = BottomBar.Visibility = chrome;
+        ViewportInfoPanel.Visibility = ViewportHelpPanel.Visibility = chrome;
         SidePanelColumn.Width = enter ? new GridLength(0) : new GridLength(300);
-        ExitFullScreenButton.Visibility = enter ? Visibility.Visible : Visibility.Collapsed;
         OrbitInputSurface.Focus();
     }
 }

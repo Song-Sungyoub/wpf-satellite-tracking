@@ -4,7 +4,8 @@ using WpfSatelliteTracking.Models;
 
 namespace WpfSatelliteTracking.Rendering;
 
-// Generic solid-reflector tracking antenna archetype on an azimuth/elevation pedestal; dimensions are illustrative.
+// Reference-inspired radio telescope: triangulated rear dish frame, feed tripod and braced pedestal.
+// Dimensions are illustrative; fixed foundation, azimuth turret and elevation head stay separate.
 internal sealed class GroundAntennaGeometry
 {
     private static readonly Model3DGroup Template = Build();
@@ -20,7 +21,7 @@ internal sealed class GroundAntennaGeometry
         yaw = new RotateTransform3D(azimuth);
         pitch = new Transform3DGroup();
         pitch.Children.Add(new RotateTransform3D(elevation));
-        pitch.Children.Add(new TranslateTransform3D(0, 0.110, 0)); // elevation axis high enough that the rim clears the turret at 10°
+        pitch.Children.Add(new TranslateTransform3D(0, 0.110, 0));
         var head = new Model3DGroup { Transform = pitch }; head.Children.Add(Template.Children[2]);
         var turret = new Model3DGroup { Transform = yaw }; turret.Children.Add(Template.Children[1]); turret.Children.Add(head);
         Model.Children.Add(Template.Children[0]); Model.Children.Add(turret);
@@ -28,10 +29,11 @@ internal sealed class GroundAntennaGeometry
         var up = new Vector3D(Math.Cos(lat) * Math.Cos(lon), Math.Sin(lat), -Math.Cos(lat) * Math.Sin(lon));
         var east = new Vector3D(-Math.Sin(lon), 0, -Math.Cos(lon));
         var south = Vector3D.CrossProduct(east, up);
-        const double size = 0.26; // identification-size model; 0.35 → 0.26 (2026-10-20, team request)
+        var anchor = EarthCoordinates.Surface(station.Latitude, station.Longitude, station.AltitudeKm + 0.002 * SatelliteOrbit.EarthRadiusKm);
+        const double size = 0.26; // illustrative identification scale
         var pose = new MatrixTransform3D(new Matrix3D(east.X * size, east.Y * size, east.Z * size, 0,
             up.X * size, up.Y * size, up.Z * size, 0, south.X * size, south.Y * size, south.Z * size, 0,
-            up.X * 1.002, up.Y * 1.002, up.Z * 1.002, 1));
+            anchor.X, anchor.Y, anchor.Z, 1));
         pose.Freeze(); Model.Transform = pose;
     }
 
@@ -43,17 +45,16 @@ internal sealed class GroundAntennaGeometry
 
     private static Model3DGroup Build()
     {
-        Material Surface(Color color) => Painted(new SolidColorBrush(color));
-        static Material Painted(Brush brush)
+        Material Surface(Color color, double shine)
         {
-            var material = new MaterialGroup(); material.Children.Add(SceneGeometry.SatelliteSurface(brush, false));
-            material.Freeze(); return material;
+            var material = new MaterialGroup();
+            material.Children.Add(SceneGeometry.SatelliteSurface(new SolidColorBrush(color), false));
+            material.Children.Add(new SpecularMaterial(Brushes.White, shine)); material.Freeze(); return material;
         }
-        var white = Surface(Color.FromRgb(236, 238, 240));
-        var paint = Surface(Color.FromRgb(214, 218, 222));
-        var grey = Surface(Color.FromRgb(150, 156, 162));
-        var dark = Surface(Color.FromRgb(34, 38, 42));
-        var concrete = Painted(SatellitePatterns.Brushed(Color.FromRgb(120, 124, 126)));
+        var steel = Surface(Color.FromRgb(174, 182, 189), 65);
+        var reflector = Surface(Color.FromRgb(221, 225, 228), 35);
+        var dark = Surface(Color.FromRgb(30, 36, 40), 25);
+        var concrete = Surface(Color.FromRgb(86, 93, 99), 8);
         var foundation = new Model3DGroup(); var yoke = new Model3DGroup(); var dish = new Model3DGroup();
         void Box(Model3DGroup group, Point3D center, Vector3D size, Material material)
             => group.Children.Add(SceneGeometry.Box(center, size, material));
@@ -67,30 +68,77 @@ internal sealed class GroundAntennaGeometry
                 y.X * length, y.Y * length, y.Z * length, 0, z.X * width, z.Y * width, z.Z * width, 0, a.X, a.Y, a.Z, 1));
             group.Children.Add(rod);
         }
-        // Foundation: concrete pad, cylindrical pedestal with an access door.
-        Box(foundation, new(0, 0.002, 0), new(0.074, 0.004, 0.074), concrete);
-        foundation.Children.Add(SceneGeometry.Lathe([(0.022, 0.004), (0.022, 0.006), (0.018, 0.008), (0.018, 0.046), (0, 0.046)], paint, 32));
-        Box(foundation, new(0, 0.018, 0.0182), new(0.010, 0.016, 0.001), grey);
-        // Azimuth turret: turntable, cross beam and two yoke arms outside the dish radius, elevation bearings at y = 0.110.
-        yoke.Children.Add(SceneGeometry.Lathe([(0, 0.046), (0.024, 0.046), (0.024, 0.054), (0, 0.054)], grey, 32));
-        Box(yoke, new(0, 0.057, 0), new(0.118, 0.006, 0.022), paint);
+        Box(foundation, new(0, 0.002, 0), new(0.064, 0.004, 0.058), concrete);
+        foreach (double x in new[] { -1.0, 1.0 }) foreach (double z in new[] { -1.0, 1.0 })
+        {
+            var foot = new Point3D(x * 0.025, 0.004, z * 0.021);
+            Rod(foundation, foot, new(x * 0.010, 0.048, z * 0.009), 0.003, steel);
+            Rod(foundation, foot, new(-x * 0.010, 0.043, z * 0.009), 0.0014, steel);
+            Box(foundation, foot, new(0.012, 0.003, 0.012), steel);
+        }
+        foundation.Children.Add(SceneGeometry.Lathe([(0.014, 0.008), (0.011, 0.043), (0.014, 0.044)], steel, 24));
+        Box(foundation, new(0, 0.025, 0.014), new(0.008, 0.018, 0.001), dark);
+        // Access stair and safety rails on the fixed foundation.
+        for (int step = 0; step < 8; step++)
+            Box(foundation, new(0, 0.004 + step * 0.0048, 0.040 - step * 0.0035), new(0.012, 0.0015, 0.005), steel);
         foreach (double side in new[] { -1.0, 1.0 })
         {
-            Box(yoke, new(side * 0.055, 0.084, 0), new(0.006, 0.050, 0.018), paint);
-            Box(yoke, new(side * 0.055, 0.110, 0), new(0.010, 0.010, 0.012), dark);
+            Rod(foundation, new(side * 0.007, 0.013, 0.041), new(side * 0.007, 0.051, 0.014), 0.00065, steel);
+            for (int post = 0; post < 3; post++)
+                Rod(foundation, new(side * 0.007, 0.004 + post * 0.014, 0.040 - post * 0.010),
+                    new(side * 0.007, 0.015 + post * 0.014, 0.040 - post * 0.010), 0.00065, steel);
         }
-        // Elevation head (rotates about local X through its origin; boresight +Y): solid paraboloid reflector,
-        // rim, four feed struts, feed horn at the focus (0, 0.044, 0), rear hub, elevation axle and counterweight.
+        foundation.Children.Add(SceneGeometry.Lathe([(0, 0.044), (0.019, 0.044), (0.019, 0.051), (0, 0.051)], dark));
+        Box(yoke, new(0, 0.054, 0), new(0.047, 0.006, 0.025), steel);
+        foreach (double side in new[] { -1.0, 1.0 })
+        {
+            Rod(yoke, new(side * 0.024, 0.055, 0), new(side * 0.052, 0.110, 0), 0.006, steel);
+            Box(yoke, new(side * 0.052, 0.110, 0), new(0.011, 0.014, 0.014), dark);
+        }
+        foreach (double side in new[] { -1.0, 1.0 })
+        {
+            Rod(yoke, new(side * 0.020, 0.055, -0.012), new(side * 0.052, 0.110, 0), 0.0035, steel);
+            Rod(yoke, new(side * 0.020, 0.055, 0.012), new(side * 0.052, 0.110, 0), 0.0035, steel);
+            Rod(yoke, new(side * 0.052, 0.110, 0), new(side * 0.040, 0.075, -0.021), 0.002, steel);
+        }
+        Box(yoke, new(0, 0.073, -0.027), new(0.078, 0.002, 0.016), steel);
+        for (int post = 0; post <= 6; post++)
+            Rod(yoke, new(-0.038 + post * 0.0127, 0.074, -0.034), new(-0.038 + post * 0.0127, 0.086, -0.034), 0.0006, steel);
+        Rod(yoke, new(-0.038, 0.086, -0.034), new(0.038, 0.086, -0.034), 0.0007, steel);
         const double radius = 0.046, depth = 0.014;
-        Point3D Bowl(double r, double angle) => new(r * Math.Cos(angle), depth * r * r / (radius * radius), r * Math.Sin(angle));
-        dish.Children.Add(SceneGeometry.Lathe(Enumerable.Range(0, 21).Select(i => (i * radius / 20, depth * i * i / 400.0)).ToArray(), white, 48));
-        dish.Children.Add(SceneGeometry.Lathe(Enumerable.Range(0, 21).Select(i => (i * radius / 20, depth * i * i / 400.0 - 0.0015)).ToArray(), paint, 48));
-        dish.Children.Add(SceneGeometry.Lathe([(radius, depth - 0.0015), (radius + 0.0012, depth - 0.0008), (radius + 0.0012, depth + 0.0004), (radius, depth)], grey, 48));
-        for (int leg = 0; leg < 4; leg++) Rod(dish, Bowl(radius * 0.86, Math.PI / 4 + leg * Math.PI / 2), new(0, 0.041, 0), 0.0011, grey);
-        dish.Children.Add(SceneGeometry.Lathe([(0.0025, 0.048), (0.004, 0.044), (0.006, 0.039), (0.0045, 0.039)], dark, 16));
-        dish.Children.Add(SceneGeometry.Lathe([(0, -0.0015), (0.012, -0.0015), (0.012, -0.010), (0, -0.010)], paint, 24));
-        Box(dish, new(0, -0.002, 0), new(0.104, 0.004, 0.006), grey);
-        Box(dish, new(0, -0.014, -0.010), new(0.020, 0.008, 0.012), dark);
+        Point3D Bowl(double r, double angle, double offset = 0) => new(r * Math.Cos(angle), depth * r * r / (radius * radius) + offset, r * Math.Sin(angle));
+        dish.Children.Add(SceneGeometry.Lathe(Enumerable.Range(0, 25).Select(i => (i * radius / 24, depth * i * i / (24 * 24))).ToArray(), reflector, 96));
+        dish.Children.Add(SceneGeometry.Lathe(Enumerable.Range(0, 25).Select(i => (i * radius / 24, depth * i * i / (24 * 24) - 0.0012)).ToArray(), steel, 96));
+        for (int ring = 1; ring <= 5; ring++) for (int segment = 0; segment < 48; segment++)
+            Rod(dish, Bowl(radius * ring / 5, segment * Math.PI / 24, 0.0004),
+                Bowl(radius * ring / 5, (segment + 1) * Math.PI / 24, 0.0004), ring == 5 ? 0.001 : 0.00035, steel);
+        for (int spoke = 0; spoke < 12; spoke++) for (int segment = 0; segment < 5; segment++)
+        {
+            double a = spoke * Math.PI / 6;
+            Rod(dish, Bowl(radius * segment / 5, a, 0.0004), Bowl(radius * (segment + 1) / 5, a, 0.0004), 0.00045, steel);
+            if (segment > 0) Rod(dish, Bowl(radius * segment / 5, a, 0.0004), Bowl(radius * (segment + 1) / 5, a + Math.PI / 6, 0.0004), 0.00025, steel);
+        }
+        // Deep rear frame: paired curved ribs, concentric chords and diagonal web members.
+        for (int spoke = 0; spoke < 16; spoke++)
+        {
+            double a = spoke * Math.PI / 8, next = (spoke + 1) * Math.PI / 8;
+            for (int segment = 1; segment <= 5; segment++)
+            {
+                double r0 = radius * (segment - 1) / 5, r1 = radius * segment / 5;
+                double offset0 = -0.010 * (1 - r0 / radius) - 0.002;
+                double offset1 = -0.010 * (1 - r1 / radius) - 0.002;
+                var inner = Bowl(r0, a, offset0); var outer = Bowl(r1, a, offset1);
+                Rod(dish, inner, outer, 0.0008, steel);
+                Rod(dish, outer, Bowl(r1, next, offset1), 0.00065, steel);
+                Rod(dish, inner, Bowl(r1, next, offset1), 0.00045, steel);
+                Rod(dish, outer, Bowl(r1, a, -0.0012), 0.0005, steel);
+            }
+        }
+        Box(dish, new(0, -0.012, 0), new(0.028, 0.009, 0.024), steel);
+        Box(dish, new(0, -0.006, 0), new(0.108, 0.005, 0.007), steel);
+        for (int leg = 0; leg < 3; leg++) Rod(dish, Bowl(radius * 0.94, leg * Math.PI * 2 / 3), new(0, 0.044, 0), 0.0012, steel);
+        Box(dish, new(0, 0.044, 0), new(0.005, 0.009, 0.005), steel);
+        Box(dish, new(0, -0.004, 0), new(0.033, 0.007, 0.025), steel);
         var result = new Model3DGroup();
         foreach (var group in new[] { foundation, yoke, dish }) result.Children.Add(SceneGeometry.MergeWithAtlas(group, false));
         result.Freeze(); return result;

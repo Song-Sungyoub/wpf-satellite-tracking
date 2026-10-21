@@ -7,34 +7,46 @@
 public sealed class StationScheduler(GroundStation[] stations)
 {
     private readonly List<(int Station, int Satellite, double Elevation)> candidates = [];
+    private GroundAntennaAim?[,] aims = new GroundAntennaAim?[stations.Length, 0];
+    private bool[] taken = [];
+    private readonly bool[] assigned = new bool[stations.Length];
+    private (double X, double Y, double Z)[] positions = [];
     public int[] Targets { get; } = Enumerable.Repeat(-1, stations.Length).ToArray();
     public int[] InView { get; } = new int[stations.Length];
     public GroundAntennaAim[] Desired { get; } = new GroundAntennaAim[stations.Length];
 
-    public void Update(CircularOrbit[] orbits, double seconds, double earthRotationDegrees, int selected)
+    public void Update(SatelliteOrbit[] orbits, double seconds, double earthRotationDegrees, int selected)
     {
         candidates.Clear();
         Array.Clear(InView);
-        var aims = new GroundAntennaAim?[stations.Length, orbits.Length];
+        if (positions.Length != orbits.Length)
+        {
+            positions = new (double X, double Y, double Z)[orbits.Length];
+            aims = new GroundAntennaAim?[stations.Length, orbits.Length];
+            taken = new bool[orbits.Length];
+        }
+        Array.Clear(aims);
+        Array.Clear(taken);
+        Array.Clear(assigned);
+        for (int i = 0; i < orbits.Length; i++) positions[i] = orbits[i].Position(seconds);
         for (int s = 0; s < stations.Length; s++)
             for (int i = 0; i < orbits.Length; i++)
             {
-                var aim = GroundAntennaTracking.Calculate(stations[s], orbits[i].Position(seconds), earthRotationDegrees);
+                var aim = GroundAntennaTracking.Calculate(stations[s], positions[i], earthRotationDegrees);
                 if (!aim.Tracking) continue;
                 aims[s, i] = aim; InView[s]++;
                 candidates.Add((s, i, aim.ElevationDegrees));
             }
-        var taken = new HashSet<int>();
-        var assigned = new bool[stations.Length];
         // 1. Keep current locks while the satellite stays above the mask.
         for (int s = 0; s < stations.Length; s++)
-            if (Targets[s] >= 0 && aims[s, Targets[s]] is not null && taken.Add(Targets[s])) assigned[s] = true;
+            if (Targets[s] >= 0 && Targets[s] < orbits.Length && aims[s, Targets[s]] is not null && !taken[Targets[s]])
+            { assigned[s] = true; taken[Targets[s]] = true; }
             else Targets[s] = -1;
         // 2. Free stations: selected satellite first, then the highest unclaimed satellite.
         foreach (var (s, i, _) in candidates.OrderByDescending(c => c.Satellite == selected).ThenByDescending(c => c.Elevation))
         {
-            if (assigned[s] || taken.Contains(i)) continue;
-            Targets[s] = i; assigned[s] = true; taken.Add(i);
+            if (assigned[s] || taken[i]) continue;
+            Targets[s] = i; assigned[s] = true; taken[i] = true;
         }
         for (int s = 0; s < stations.Length; s++) Desired[s] = Targets[s] >= 0 ? aims[s, Targets[s]]!.Value : default;
     }

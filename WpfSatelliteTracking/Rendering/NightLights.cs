@@ -43,7 +43,7 @@ public sealed class NightLights : IDisposable
         var material = new MaterialGroup();
         material.Children.Add(new DiffuseMaterial(new ImageBrush(Texture)) { Color = Colors.Black, AmbientColor = Colors.Black });
         material.Children.Add(new EmissiveMaterial(new ImageBrush(Texture)));
-        Model = SceneGeometry.Sphere(1.001, material, 128, 64);
+        Model = SceneGeometry.EarthSphere(1.001, material, 128, 64);
     }
 
     public void Update(DateTimeOffset time, SolarState sun)

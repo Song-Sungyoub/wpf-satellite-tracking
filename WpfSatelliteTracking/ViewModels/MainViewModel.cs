@@ -16,7 +16,7 @@ using WpfSatelliteTracking.Rendering;
 
 namespace WpfSatelliteTracking.ViewModels;
 
-public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly Stopwatch clock = new();
     private bool rendering;
@@ -27,29 +27,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly SatelliteLabel[] labelCache;
     private readonly List<Rect> celestialLabelBounds = new(10);
     private readonly SatelliteOperations operations;
-    private readonly SatelliteEffects satelliteEffects;
     private readonly Point3D[] antennaAnchors;
     private readonly GroundAntennaGeometry[] groundAntennas;
     private readonly GroundAntennaAim[] stationAims;
     private readonly RotateTransform3D earthPose;
-    private bool capturing, showCommunications = true;
+    private bool showCommunications = true;
     private string contactSearchMessage = "";
     public bool ShowCommunications
     {
         get => showCommunications;
         set { if (showCommunications == value) return; showCommunications = value; Notify(); UpdateScene(); }
     }
-    public bool IsCapturing => capturing;
-    public string CaptureButtonText => capturing ? "촬영 중지" : "선택 위성 촬영 시작";
-    public string CaptureStatus => solarView || followedCelestial >= 0 ? "천체 보기에서는 통신·촬영 효과 숨김"
-        : capturing ? (SelectedOrbit.Mission == SatelliteMission.A ? "A형 · 우측 35° 측면 관측 빔 / 스캔 중" : "B형 · 하향 화각 12° × 8° 관측 중") : "촬영 대기 · 센서 설정은 예시";
     public string CommunicationStatus => contactSearchMessage.Length > 0 ? contactSearchMessage
         : string.Join("\n", GroundStations.Select((s, i) =>
         {
             int target = scheduler.Targets[i]; var servo = servos[i];
             string state = target < 0 ? (servo.Elevation > 89.5 ? "천정 대기" : "천정으로 복귀 중")
-                : servo.Locked ? $"교신 {Orbits[target].Name} · {scheduler.Desired[i].ElevationDegrees:0.0}°" : $"포착 중 {Orbits[target].Name}";
-            return $"{s.Name}: {state} · 범위 안 {scheduler.InView[i]}대\n  안테나 방위 {servo.Azimuth:0}° / 고각 {servo.Elevation:0}°";
+                : servo.Locked ? $"교신 {Orbits[target].Name} · 고각 {scheduler.Desired[i].ElevationDegrees:0}°" : $"포착 중 {Orbits[target].Name}";
+            return $"{s.Name}: {state}";
         }));
     // Ground network: every station tracks a different satellite inside its 10° mask (see StationScheduler), slewing
     // on and off target and parking at zenith; links are drawn once its antenna is on target. Coverage mode only adds
@@ -59,19 +54,48 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly AntennaServo[] servos;
     private double servoTime = double.NaN;
     private readonly StationCoverage[] coverages = new StationCoverage[3];
-    // Earth-fixed repeat ground tracks (one per group) under the rotating Earth; only the selected satellite's group
-    // is shown, since a full repeat cycle of every group would cover the globe.
-    private readonly Dictionary<int, GeometryModel3D> groundTracks = [];
+    // Future ground track of the selected satellite, stored in Earth-fixed coordinates.
     private readonly Model3DGroup groundTrackHost = new();
-    private bool showGroundTracks;
+    private bool showGroundTracks = true;
     public bool ShowGroundTracks { get => showGroundTracks; set { if (SetFlag(ref showGroundTracks, value)) UpdateGroundTrack(); } }
-    private void UpdateGroundTrack()
+    private double trajectorySeconds = double.NaN, trajectoryWallTime = double.NegativeInfinity;
+    private int trajectorySelection = -1;
+    private bool trajectoryAll;
+    private void UpdateGroundTrack() => RefreshTrajectories(true);
+    private void RefreshTrajectories(bool force = false)
     {
+        if (orbitModels.Count != Orbits.Length) return;
+        if (!force && selectedIndex == trajectorySelection && trajectoryAll == showAllOrbits
+            && (Math.Abs(OrbitTime - trajectorySeconds) < 60 || clock.Elapsed.TotalSeconds - trajectoryWallTime < 1)) return;
+        trajectorySeconds = OrbitTime; trajectoryWallTime = clock.Elapsed.TotalSeconds; trajectorySelection = selectedIndex; trajectoryAll = showAllOrbits;
         groundTrackHost.Children.Clear();
-        if (!showGroundTracks || groundTracks.Count == 0) return;
-        int group = orbitRepresentatives.First(r => r == selectedIndex || Orbits[r].SharesPlaneWith(SelectedOrbit));
-        groundTrackHost.Children.Add(groundTracks[group]);
+        GroundTrackTimeLabels.Clear();
+        groundTrackAnchors.Clear();
+        double endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
+        for (int i = 0; i < Orbits.Length; i++)
+            if (i == selectedIndex || showAllOrbits)
+                orbitModels[i].Geometry = showOrbits && !showAllOrbits && endSeconds > OrbitTime
+                    ? SceneGeometry.PredictedOrbit(Orbits[i], OrbitTime, colors[i], Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime)).Geometry
+                    : new MeshGeometry3D();
+        if (showGroundTracks && endSeconds > OrbitTime)
+            {
+            if (showAllOrbits)
+                for (int i = 0; i < Orbits.Length; i++)
+                {
+                    if (i == selectedIndex) continue;
+                    var color = colors[i];
+                    var muted = Color.FromRgb((byte)(color.R * 0.65), (byte)(color.G * 0.65), (byte)(color.B * 0.65));
+                    groundTrackHost.Children.Add(SceneGeometry.GroundTrack(Orbits[i], OrbitTime,
+                        Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime), muted));
+                }
+            double duration = Math.Min(SelectedOrbit.PeriodSeconds, endSeconds - OrbitTime);
+            groundTrackHost.Children.Add(SceneGeometry.GroundTrack(SelectedOrbit, OrbitTime, duration, Colors.LimeGreen));
+            BuildGroundTrackTimes(duration);
+        }
+        UpdateGroundTrackTimeLabels();
     }
+    private bool earthFixedView;
+    public bool EarthFixedView { get => earthFixedView; set { if (SetFlag(ref earthFixedView, value)) { NotifyCamera(); } } }
     private readonly CoverageLinks coverageLinks = new(3);
     private readonly AxisAngleRotation3D coverageRotation = new(new Vector3D(0, 1, 0), 0);
     private readonly Model3DGroup coverageGroup = new();
@@ -97,11 +121,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public string FrameStatus { get; private set; } = "WPF FPS 측정 중…";
     private readonly FrameTiming frameTiming = new();
     private bool measuringFrames;
-    private CircularOrbit? measuredOrbit;
-    public string FrameMeasurementStatus { get; private set; } = "실제 축척 · 600배 · 촬영/통신 켜고 재생 후 측정";
+    private SatelliteOrbit? measuredOrbit;
+    public string FrameMeasurementStatus { get; private set; } = "실제 축척 · 600배 · 통신 켜고 재생 후 측정";
     public string FrameMeasurementButton => measuringFrames ? "프레임 측정 종료" : "프레임 측정 시작";
     public ICommand MeasureFramesCommand { get; }
-    private bool MeasurementConditions => playing && IsTrueScale && Speed == 600 && capturing && ShowCommunications && !solarView && followedCelestial < 0;
+    private bool MeasurementConditions => playing && IsTrueScale && Speed == 600 && ShowCommunications && !solarView && followedCelestial < 0;
     private void FinishMeasurement(string reason)
     {
         measuringFrames = false;
@@ -116,6 +140,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly List<Model3DGroup> satelliteModels = [];
     private readonly MatrixTransform3D?[] wingTransforms, dishTransforms;
     private readonly double[] wingAngles;
+    private readonly DirectionalLight antennaInspectionLight = new(Colors.Black, new Vector3D(0, -1, 0));
+    private readonly AmbientLight ambientLight = new(Color.FromRgb(20, 24, 35));
+    private readonly AmbientLight solarAmbientLight = new(Color.FromRgb(20, 24, 35));
+    private readonly PointLight solarPointLight = new(Colors.White, new Point3D()) { ConstantAttenuation = 1, Range = 1000000 };
     private readonly PointLight sunLight = new(Colors.White, new Point3D(18, 0, 0))
     { ConstantAttenuation = 1, LinearAttenuation = 0, QuadraticAttenuation = 0, Range = 1000000 };
     private bool isTrueScale;
@@ -123,7 +151,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly Model3DGroup earthLocalScene = new(), solarScene = new(), planetOrbits = new();
     private readonly MatrixTransform3D[] solarTransforms = Enumerable.Range(0, 9).Select(_ => new MatrixTransform3D()).ToArray();
     private readonly ScaleTransform3D planetOrbitScale = new();
-    private bool solarView, earthOverview;
+    private enum ViewMode { Default, Earth, SolarOverview, Celestial, Satellite, GroundStation, GroundAntenna }
+    private ViewMode viewMode;
+    private bool solarView => viewMode == ViewMode.SolarOverview || (viewMode == ViewMode.Celestial && followedCelestial != 1);
+    private bool earthOverview => viewMode == ViewMode.Earth;
+    private bool celestialOverview => viewMode == ViewMode.SolarOverview;
+    private bool followSatellite => viewMode == ViewMode.Satellite;
+    private bool followGroundStation => viewMode is ViewMode.GroundStation or ViewMode.GroundAntenna;
+    private bool antennaView => viewMode == ViewMode.GroundAntenna;
+    private void SetViewMode(ViewMode mode, int celestial = -1)
+    {
+        viewMode = mode;
+        followedCelestial = mode == ViewMode.Celestial ? celestial : -1;
+    }
     private bool fullSolarSystem = true;
     private int planetOrbitYear;
     private Point3D solarEarthPosition;
@@ -137,23 +177,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public bool IsSolarFocus => FocusMode == "Solar";
     public bool IsInnerFocus => FocusMode == "Inner";
     public bool IsSunFocus => FocusMode == "Sun";
-    public bool IsGroundFocus => FocusMode == "Ground";
+    public bool IsGroundFocus => viewMode == ViewMode.GroundStation;
+    public bool IsAntennaFocus => antennaView;
     public bool IsSatelliteFocus => FocusMode == "Satellite";
     private void NotifyFocusMode()
     {
+        Notify(nameof(IsAntennaFocus)); Notify(nameof(IsGroundFocus));
         if (focusMode == FocusMode) return;
         focusMode = FocusMode;
         Notify(nameof(FocusMode)); Notify(nameof(IsEarthFocus)); Notify(nameof(IsSolarFocus)); Notify(nameof(IsInnerFocus));
-        Notify(nameof(IsSunFocus)); Notify(nameof(IsGroundFocus)); Notify(nameof(IsSatelliteFocus));
+        Notify(nameof(IsSunFocus)); Notify(nameof(IsAntennaFocus)); Notify(nameof(IsGroundFocus)); Notify(nameof(IsSatelliteFocus));
     }
-    public string ViewDescription => solarView ? "태양계 · 태양 중심 / 행성 8개 공전 궤도" : "지구 주변 · 달 / 인공위성 50대";
+    public string ViewDescription => antennaView ? "안테나 모델 · 접시 / 후면 트러스 / 방위·고각 추적" : solarView ? "태양계 · 태양 중심 / 행성 8개 공전 궤도" : "지구 주변 · 달 / 실제 TLE 위성";
     private readonly TranslateTransform3D renderTranslation = new();
     private readonly ScaleTransform3D[] bodyScales = [new(), new(), new(), new()];
     private readonly double[] satellitePhysicalScales;
     private CelestialState celestialState = null!;
     private readonly NightLights nightLights = new();
     private readonly MoonRelief moonRelief = new();
-    private readonly MapTileManager tileManager = new();
+    private readonly MapTileLoader tileLoader = new();
     private readonly Model3DGroup tileLayer = new();
     private readonly Dispatcher dispatcher = Dispatcher.CurrentDispatcher;
     private readonly List<ScaleTransform3D> stationScales = [];
@@ -174,23 +216,37 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public double NearSatellitePlane => Math.Max(1e-10, SceneScale.Units(SceneScale.SatelliteSpanMeters(SelectedOrbit.Mission) / 1000) * 0.01);
     public bool UseNearSatelliteLayer => !solarView && IsTrueScale && followSatellite && distance < 0.0025;
     public Model3D MainScene => solarView ? solarScene : UseNearSatelliteLayer ? distantScene : earthLocalScene;
-    public Model3D? SkyScene => showStars ? Scene.Children[3] : null;
+    private readonly Model3D stars = SceneGeometry.SpaceBackground();
+    private readonly Model3D atmosphere = SceneGeometry.Atmosphere();
+    public Model3D? SkyScene => showStars ? stars : null;
 
     // Display / load toggles. Hidden layers are removed (or lose their material) and skip their per-frame work.
-    private bool showOrbits = true, showClouds = true, showAtmosphere = true, showNightLights = true, showStars = true,
+    private bool showOrbits = false, showClouds = true, showAtmosphere = true, showNightLights = true, showStars = true,
         showMoon = true, showSatelliteLabels = true, animateAllSatellites, tilesShown;
-    public bool ShowOrbits { get => showOrbits; set { if (SetFlag(ref showOrbits, value)) UpdateOrbitMaterials(); } }
+    public bool ShowOrbits { get => showOrbits; set { if (SetFlag(ref showOrbits, value)) { RefreshTrajectories(true); UpdateOrbitMaterials(); } } }
     private bool showAllOrbits;
-    public bool ShowAllOrbits { get => showAllOrbits; set { if (SetFlag(ref showAllOrbits, value)) UpdateOrbitMaterials(); } }
+    public bool ShowAllOrbits { get => showAllOrbits; set { if (SetFlag(ref showAllOrbits, value)) { RefreshTrajectories(true); UpdateOrbitMaterials(); } } }
     public bool ShowClouds { get => showClouds; set { if (SetFlag(ref showClouds, value)) ApplyGlobalLayers(); } }
+    private bool showSolarShading = true;
+    public bool ShowSolarShading
+    {
+        get => showSolarShading;
+        set
+        {
+            if (!SetFlag(ref showSolarShading, value)) return;
+            ambientLight.Color = solarAmbientLight.Color = value ? Color.FromRgb(20, 24, 35) : Colors.White;
+            sunLight.Color = solarPointLight.Color = value ? Colors.White : Colors.Black;
+            nightLights.Invalidate(); ApplyGlobalLayers(); UpdateScene();
+        }
+    }
     public bool ShowNightLights
     {
         get => showNightLights;
         set { if (!SetFlag(ref showNightLights, value)) return; nightLights.Invalidate(); ApplyGlobalLayers(); UpdateScene(); }
     }
-    public bool ShowAtmosphere { get => showAtmosphere; set { if (SetFlag(ref showAtmosphere, value)) ShowInEarthViews(Scene.Children[6], value); } }
+    public bool ShowAtmosphere { get => showAtmosphere; set { if (SetFlag(ref showAtmosphere, value)) ShowInEarthViews(atmosphere, value); } }
     public bool ShowStars { get => showStars; set { if (SetFlag(ref showStars, value)) Notify(nameof(SkyScene)); } }
-    public bool ShowMoon { get => showMoon; set { if (!SetFlag(ref showMoon, value)) return; ShowInEarthViews(Scene.Children[8], value); UpdateScene(); } }
+    public bool ShowMoon { get => showMoon; set { if (!SetFlag(ref showMoon, value)) return; ShowInEarthViews(moonRelief.Model, value); UpdateScene(); } }
     public bool ShowSatelliteLabels { get => showSatelliteLabels; set { if (SetFlag(ref showSatelliteLabels, value)) UpdateLabels(); } }
     public bool AnimateAllSatellites { get => animateAllSatellites; set { if (SetFlag(ref animateAllSatellites, value)) UpdateScene(); } }
     private bool SetFlag(ref bool field, bool value, [CallerMemberName] string? name = null)
@@ -209,7 +265,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     // Regional tiles replace the global night/cloud layers; the toggles hide them independently.
     private void ApplyGlobalLayers()
     {
-        nightLights.Model.Material = tilesShown || !showNightLights ? null : nightMaterial;
+        nightLights.Model.Material = tilesShown || !showNightLights || !showSolarShading ? null : nightMaterial;
+        foreach (Model3DGroup tile in tileLayer.Children)
+            ((GeometryModel3D)tile.Children[1]).Material = showSolarShading && showNightLights ? tileNightMaterial : null;
         clouds.Material = tilesShown || !showClouds ? null : cloudMaterial;
     }
     public Model3D? NearSatelliteScene => UseNearSatelliteLayer ? nearSatelliteScene : null;
@@ -219,8 +277,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private double SatelliteFocusDistance => IsTrueScale ? SceneScale.Units(SceneScale.SatelliteSpanMeters(SelectedOrbit.Mission) / 1000) * 4
         : (SelectedOrbit.Mission == SatelliteMission.B ? 0.9 : 0.55) * SceneScale.ObservationSatelliteScale;
     public int ScaleModeIndex { get => IsTrueScale ? 1 : 0; set { if (value is 0 or 1) IsTrueScale = value == 1; } }
-    public string ScaleDescription => IsTrueScale ? "실제 비율 · A형 폭 12m / B형 폭 8m (가정)\n위치는 근사 · 궤도선/지상국은 안내 표시"
-        : "관측용 · 태양계 거리는 1 AU = 18로 통일\n지구 주변은 별도 확대 · 천체 크기 과장";
     public bool IsTrueScale
     {
         get => isTrueScale;
@@ -239,7 +295,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 bodyScales[i].ScaleX = bodyScales[i].ScaleY = bodyScales[i].ScaleZ = BodyRadius(i) / CelestialGeometry.Radii[i];
             nightLights.Invalidate();
             UpdateScene(); NotifyCamera();
-            Notify(); Notify(nameof(ScaleModeIndex)); Notify(nameof(ScaleDescription)); Notify(nameof(SelectedInfo));
+            Notify(); Notify(nameof(ScaleModeIndex)); Notify(nameof(SelectedInfo));
         }
     }
     private readonly List<Model3DGroup> litAssets = [], eclipsedAssets = [];
@@ -250,9 +306,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly AxisAngleRotation3D moonFacing = new(new Vector3D(0, 1, 0), 0), moonTilt = new(new Vector3D(0, 0, 1), 0);
     private readonly Point3D[] celestialPositions = new Point3D[4];
     private double celestialUpdateTime = double.NegativeInfinity;
-    private bool celestialOverview;
     private int followedCelestial = -1;
-    private DateTimeOffset epoch = DateTimeOffset.UtcNow;
+    private DateTimeOffset epoch = SatelliteCatalog.InitialTime;
     private bool realTime;
     private string timeInput = "", timeError = "";
     private readonly Color[] colors;
@@ -262,8 +317,6 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private double previousTime, simulationSeconds, speed = 120, yaw = -2.5, pitch = 0.35, distance = 5.1;
     private bool playing = true;
     private Point3D cameraTarget;
-    private bool followSatellite;
-    private bool followGroundStation;
     public event PropertyChangedEventHandler? PropertyChanged;
     public Model3DGroup Scene { get; } = new();
     public GroundStation[] GroundStations { get; } =
@@ -273,11 +326,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         new("오사카", 34.6937, 135.5023),
         new("상하이", 31.2304, 121.4737)
     ];
-    public CircularOrbit[] Orbits { get; } = SatelliteConstellation.Create();
+    public SatelliteOrbit[] Orbits { get; } = SatelliteCatalog.Create();
     public ICollectionView SatellitesView { get; }
     public ICommand TogglePlaybackCommand { get; }
     public ICommand ResetCommand { get; }
     public ICommand FocusGroundStationsCommand { get; }
+    public ICommand FocusAntennaCommand { get; }
     public ICommand FocusSatelliteCommand { get; }
     public ICommand SelectOrbitCommand { get; }
     public ICommand ApplyTimeCommand { get; }
@@ -288,8 +342,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand FocusSunCommand { get; }
     public ICommand FocusEarthSystemCommand { get; }
     public ICommand FocusCelestialCommand { get; }
-    public ICommand ToggleCaptureCommand { get; }
     public ICommand FindContactCommand { get; }
+    public ICommand PredictPassesCommand { get; }
+    public ICommand LoadTleCommand { get; }
+    public string PassPredictionStatus { get; private set; } = "";
+    public string CatalogSummary => $"공개 TLE {Orbits.Length}대";
     public IReadOnlyList<CelestialLabel> CelestialLabels { get; } =
     [new(0, "태양", Brushes.Orange), new(1, "달", Brushes.LightGray), new(2, "수성", Brushes.Tan), new(3, "금성", Brushes.Wheat), new(4, "지구", Brushes.LightSkyBlue),
      new(5, "화성", Brushes.Coral), new(6, "목성", Brushes.Bisque), new(7, "토성", Brushes.Khaki), new(8, "천왕성", Brushes.PaleTurquoise), new(9, "해왕성", Brushes.CornflowerBlue)];
@@ -312,33 +369,33 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
     }
     public DateTimeOffset SimulationTime => epoch.AddSeconds(simulationSeconds);
-    // Orbits are defined from a fixed reference epoch so repeat ground tracks stay over the stations on any date.
-    private double OrbitTime => (epoch - SatelliteConstellation.ReferenceEpoch).TotalSeconds + simulationSeconds;
-    public SolarState CurrentSun { get; private set; } = SolarLighting.At(DateTimeOffset.UtcNow);
+    // Internal elapsed seconds share a UTC origin; each TLE retains its own propagation epoch.
+    private double OrbitTime => (epoch - SatelliteCatalog.ReferenceEpoch).TotalSeconds + simulationSeconds;
+    public SolarState CurrentSun { get; private set; } = SolarLighting.At(SatelliteCatalog.InitialTime);
     public string SimulationTimeText => SimulationTime.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy-MM-dd HH:mm:ss 'KST'", CultureInfo.InvariantCulture);
     public string TimeInput { get => timeInput; set { timeInput = value; Notify(); } }
     public string TimeError { get => timeError; private set { timeError = value; Notify(); } }
     public string TimeMode => !playing ? "일시정지" : realTime ? "현재 시각 · 실시간" : "시뮬레이션";
-    public string SolarInfo => $"☀ 태양 직하점\n위도 {CurrentSun.LatitudeDegrees:0.0}° · 경도 {CurrentSun.LongitudeDegrees:0.0}°";
     public bool SelectedEclipsed => eclipsed[selectedIndex];
-    public CircularOrbit SelectedOrbit
+    public SatelliteOrbit SelectedOrbit
     {
         get => Orbits[selectedIndex];
         set
         {
             int index = Array.IndexOf(Orbits, value);
             if (index < 0 || selectedIndex == index) return;
-            selectedIndex = index; capturing = false; contactSearchMessage = "";
-            Notify(); Notify(nameof(SelectedInfo)); Notify(nameof(IsCapturing)); Notify(nameof(CaptureButtonText));
+            selectedIndex = index; PassPredictionStatus = "선택 위성 변경 · 다음 통과를 다시 계산하세요."; Notify(nameof(PassPredictionStatus)); contactSearchMessage = "";
+            Notify(); Notify(nameof(SelectedInfo));
             if (IsTrueScale && followSatellite) distance = SatelliteFocusDistance;
             UpdateOrbitMaterials(); UpdateGroundTrack(); UpdateScene();
         }
     }
-    public string SelectedInfo => $"선택: {SelectedOrbit.Name}\n{SelectedOrbit.GroupName}\n고도 {SelectedOrbit.AltitudeKm:N0} km · 경사각 {SelectedOrbit.InclinationDegrees:0.#}°\n가정한 전개 폭 {SceneScale.SatelliteSpanMeters(SelectedOrbit.Mission):0} m\n{(SelectedEclipsed ? "● 지구 그림자 안 · 일식" : "☀ 태양광 수신")}";
+    public string SelectedInfo => $"NORAD {SelectedOrbit.NoradId} · 고도 {SelectedOrbit.AltitudeKm:N0} km · 경사각 {SelectedOrbit.InclinationDegrees:0.#}°\n"
+        +$"TLE {SelectedOrbit.TleEpoch:MM-dd HH:mm} UTC ({(SimulationTime - SelectedOrbit.TleEpoch).TotalDays:+0.0;-0.0;0.0}일) · {(SelectedEclipsed ? "지구 그림자" : "일조")}";
     public ObservableCollection<SatelliteLabel> SatelliteLabels { get; } = [];
-    public sealed class SatelliteLabel(CircularOrbit orbit, Brush color) : INotifyPropertyChanged
+    public sealed class SatelliteLabel(SatelliteOrbit orbit, Brush color) : INotifyPropertyChanged
     {
-        public CircularOrbit Orbit { get; } = orbit;
+        public SatelliteOrbit Orbit { get; } = orbit;
         public string ShortName { get; } = orbit.Name.Split(' ')[0];
         public Brush Color { get; } = color;
         public string Name { get; private set; } = "";
@@ -363,32 +420,33 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         get
         {
-            var position = (Vector3D)(cameraTarget + new Vector3D(distance * Math.Cos(pitch) * Math.Sin(yaw), distance * Math.Sin(pitch), distance * Math.Cos(pitch) * Math.Cos(yaw)));
+            var offset = new Vector3D(distance * Math.Cos(pitch) * Math.Sin(yaw), distance * Math.Sin(pitch), distance * Math.Cos(pitch) * Math.Cos(yaw));
+            var position = (Vector3D)(followSatellite ? SatelliteCamera.Position(cameraTarget, offset) : cameraTarget + offset);
             double minimum = followGroundStation ? 1.0005 : 1.06;
             if (position.Length < minimum) { position.Normalize(); position *= minimum; }
             return (Point3D)position;
         }
     }
     public Vector3D CameraDirection => cameraTarget - CameraPosition;
+    public Vector3D CameraUpDirection => antennaView ? (Vector3D)cameraTarget : new Vector3D(0, 1, 0);
 
     public MainViewModel()
     {
+        InitializePredictionCommands();
         operations = new SatelliteOperations(GroundStations);
-        satelliteEffects = new SatelliteEffects(GroundStations.Length);
         antennaAnchors = new Point3D[GroundStations.Length];
         groundAntennas = new GroundAntennaGeometry[GroundStations.Length]; stationAims = new GroundAntennaAim[GroundStations.Length];
         scheduler = new StationScheduler(GroundStations); servos = GroundStations.Select(_ => new AntennaServo()).ToArray();
         Color[] palette = [Color.FromRgb(74, 222, 226), Color.FromRgb(255, 188, 95), Color.FromRgb(184, 145, 255),
             Color.FromRgb(103, 226, 151), Color.FromRgb(255, 132, 173), Color.FromRgb(235, 240, 255)];
-        colors = Orbits.Select(orbit => palette[orbit.ClusterId is int plane ? (orbit.Mission == SatelliteMission.A ? (plane - 1) % 3 : 3 + (plane - 1) % 2) : 5]).ToArray();
+        colors = Orbits.Select(orbit => palette[orbit.NoradId % (uint)palette.Length]).ToArray();
         // One label per shared orbit plane (first member), plus the selected satellite.
-        planeRepresentative = Orbits.Select((orbit, i) => orbit.ClusterId is null || !Orbits.Take(i).Any(orbit.SharesPlaneWith)).ToArray();
+        labelEligible = Enumerable.Repeat(true, Orbits.Length).ToArray();
         eclipsed = new bool[Orbits.Length];
         satellitePhysicalScales = new double[Orbits.Length];
         wingTransforms = new MatrixTransform3D?[Orbits.Length]; dishTransforms = new MatrixTransform3D?[Orbits.Length];
         wingAngles = new double[Orbits.Length];
         SatellitesView = CollectionViewSource.GetDefaultView(Orbits);
-        SatellitesView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(CircularOrbit.GroupName)));
         labelCache = Orbits.Select((orbit, i) =>
         {
             var brush = new SolidColorBrush(colors[i]); brush.Freeze();
@@ -398,21 +456,46 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         MeasureFramesCommand = new ActionCommand(() =>
         {
             if (measuringFrames) { FinishMeasurement("측정 종료"); return; }
-            if (!MeasurementConditions) { FrameMeasurementStatus = "실제 축척 · 600배 · 촬영/통신 켜고 재생하세요."; Notify(nameof(FrameMeasurementStatus)); return; }
+            if (!MeasurementConditions) { FrameMeasurementStatus = "실제 축척 · 600배 · 통신 켜고 재생하세요."; Notify(nameof(FrameMeasurementStatus)); return; }
             frameTiming.Reset(); measuredOrbit = SelectedOrbit; measuringFrames = true;
-            FrameMeasurementStatus = $"{SelectedOrbit.Name} · 실제 축척/50대/600배 · 측정 중";
+            FrameMeasurementStatus = $"{SelectedOrbit.Name} · 실제 축척/TLE 위성/600배 · 측정 중";
             Notify(nameof(FrameMeasurementStatus)); Notify(nameof(FrameMeasurementButton));
         });
-        ToggleCaptureCommand = new ActionCommand(() =>
+        PredictPassesCommand = new ActionCommand(async () =>
         {
-            capturing = !capturing; contactSearchMessage = "";
-            if (capturing) FocusOperations(); else UpdateScene();
-            Notify(nameof(IsCapturing)); Notify(nameof(CaptureButtonText));
+            var orbit = SelectedOrbit; var time = SimulationTime;
+            PassPredictionStatus = "다음 24시간 통과 예측 중…"; Notify(nameof(PassPredictionStatus));
+            try
+            {
+                var text = await Task.Run(() => string.Join("\n", GroundStations.Select(station =>
+                {
+                    var pass = PassPredictor.Next(orbit, station, time, SatelliteCatalog.MaximumTime);
+                    return pass is null ? $"{station.Name}: 다음 24시간/자료 범위 안 통과 없음"
+                        : $"{station.Name}: {pass.Acquisition.ToOffset(TimeSpan.FromHours(9)):MM-dd HH:mm:ss} ~ {pass.Loss.ToOffset(TimeSpan.FromHours(9)):HH:mm:ss} KST\n  최고 {pass.Peak.ToOffset(TimeSpan.FromHours(9)):HH:mm:ss} · {pass.MaxElevation:0.0}°" + (pass.AlreadyVisible ? " · 현재 가시 중" : "") + (pass.ClippedEnd ? " · 종료는 검색범위 밖" : "");
+                })));
+                if (!disposed && orbit == SelectedOrbit)
+                    PassPredictionStatus = $"{orbit.Name} · 기준 {time.ToOffset(TimeSpan.FromHours(9)):MM-dd HH:mm:ss} KST\n" + text;
+            }
+            catch (Exception ex) { if (!disposed) PassPredictionStatus = "통과 계산 실패: " + ex.Message; }
+            if (!disposed) Notify(nameof(PassPredictionStatus));
+        });
+        LoadTleCommand = new ActionCommand(() =>
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "TLE 자료 (*.tle;*.txt)|*.tle;*.txt", Title = "실제 TLE 자료 선택 (새 창으로 적용)" };
+            if (dialog.ShowDialog() != true) return;
+            try
+            {
+                _ = SatelliteCatalog.Parse(File.ReadAllText(dialog.FileName));
+                var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+                start.ArgumentList.Add("--tle"); start.ArgumentList.Add(dialog.FileName);
+                Process.Start(start);
+            }
+            catch (Exception ex) { TimeError = "TLE 파일 적용 실패: " + ex.Message; }
         });
         FindContactCommand = new ActionCommand(() =>
         {
-            double remaining = (new DateTimeOffset(2100, 12, 31, 23, 59, 59, TimeSpan.Zero) - SimulationTime).TotalSeconds;
-            var delay = operations.NextContactDelay(SelectedOrbit, OrbitTime, CurrentSun.EarthRotationDegrees, Math.Clamp(remaining, 0, 86400));
+            double remaining = (SatelliteCatalog.MaximumTime - SimulationTime).TotalSeconds;
+            var delay = operations.NextContactDelay(SelectedOrbit, OrbitTime, Math.Clamp(remaining, 0, 86400));
             if (delay is null) { contactSearchMessage = "다음 24시간/지원 시각 안에 교신 가능한 지점이 없습니다."; Notify(nameof(CommunicationStatus)); return; }
             simulationSeconds += delay.Value; playing = realTime = false; previousTime = clock.Elapsed.TotalSeconds;
             contactSearchMessage = ""; TimeError = "";
@@ -423,31 +506,27 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (!DateTime.TryParseExact(TimeInput, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
                 || local.Year is < 2000 or > 2100)
-            { TimeError = "2000~2100년의 yyyy-MM-dd HH:mm:ss 형식으로 입력하세요."; return; }
+            { TimeError = "yyyy-MM-dd HH:mm:ss 형식으로 입력하세요. 사용 범위는 TLE 기준 ±7일입니다."; return; }
             var time = new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(9));
             if (time.UtcDateTime.Year < 2000) { TimeError = "UTC 기준 2000년 이후 시각을 입력하세요."; return; }
             SetSimulationTime(time);
         });
         CurrentTimeCommand = new ActionCommand(() => SetSimulationTime(DateTimeOffset.UtcNow, true));
         TimeInput = SimulationTime.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-        SelectOrbitCommand = new ActionCommand(value => { if (value is CircularOrbit orbit) SelectedOrbit = orbit; });
+        SelectOrbitCommand = new ActionCommand(value => { if (value is SatelliteOrbit orbit) SelectedOrbit = orbit; });
         ResetCommand = new ActionCommand(() =>
         {
-            solarView = earthOverview = false;
-            celestialOverview = false; followedCelestial = -1;
-            followSatellite = false;
-            followGroundStation = false;
+            SetViewMode(ViewMode.Default);
             realTime = false;
             simulationSeconds = 0; yaw = -2.5; pitch = 0.35; distance = 5.1; cameraTarget = new Point3D();
             fitOverview = true; FitOverview(); UpdateOrbitMaterials(); UpdateScene(); NotifyCamera();
         });
         FocusGroundStationsCommand = new ActionCommand(() => FocusGround(null));
+        FocusAntennaCommand = new ActionCommand(FocusAntenna);
         FocusStationCommand = new ActionCommand(value => { if (value is GroundStation station) FocusGround(station); });
         FocusEarthSystemCommand = new ActionCommand(() =>
         {
-            solarView = celestialOverview = followSatellite = followGroundStation = false;
-            earthOverview = true;
-            followedCelestial = -1; cameraTarget = new Point3D(); yaw = -2.5; pitch = 0.35;
+            SetViewMode(ViewMode.Earth); cameraTarget = new Point3D(); yaw = -2.5; pitch = 0.35;
             fitOverview = true; FitOverview();
             UpdateOrbitMaterials(); UpdateScene();
             var moon = celestialPositions[1]; yaw = Math.Atan2(moon.X, moon.Z) + Math.PI / 2;
@@ -459,11 +538,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             if (value is not CelestialLabel body) return;
             if (body.Index == 4) { FocusEarthSystemCommand.Execute(null); return; }
-            solarView = body.Index != 1;
-            earthOverview = false;
+            SetViewMode(ViewMode.Celestial, body.Index);
             if (solarView) RebuildPlanetOrbits();
-            followSatellite = followGroundStation = celestialOverview = fitOverview = false;
-            followedCelestial = body.Index;
+            fitOverview = false;
             UpdateScene();
             var offset = DisplayBodyPosition(0) - cameraTarget;
             yaw = body.Index == 0 ? 0.5 : Math.Atan2(offset.X, offset.Z) + 0.45;
@@ -479,22 +556,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         FocusSunCommand = new ActionCommand(() => FocusCelestialCommand.Execute(CelestialLabels[0]));
         FocusSatelliteCommand = new ActionCommand(() =>
         {
-            solarView = earthOverview = false;
-            celestialOverview = false; followedCelestial = -1;
-            fitOverview = false; followSatellite = true; distance = SatelliteFocusDistance;
-            followGroundStation = false;
+            SetViewMode(ViewMode.Satellite);
+            fitOverview = false; distance = SatelliteFocusDistance;
             var pose = SceneGeometry.SatellitePose(SelectedOrbit, OrbitTime);
             var offset = pose.Transform(SelectedOrbit.Mission == SatelliteMission.A ? new Vector3D(0.9, -1, 0.6) : new Vector3D(0.8, -0.6, 0.8)); offset.Normalize();
             yaw = Math.Atan2(offset.X, offset.Z); pitch = Math.Asin(offset.Y);
             UpdateOrbitMaterials(); UpdateScene(); Notify(nameof(PlaybackText));
         });
-        Scene.Children.Add(new AmbientLight(Color.FromRgb(20, 24, 35)));
+        Scene.Children.Add(ambientLight);
         Scene.Children.Add(sunLight);
         var bitmap = new BitmapImage();
         bitmap.BeginInit(); bitmap.UriSource = new Uri("pack://application:,,,/WpfSatelliteTracking;component/Assets/earth.jpg"); bitmap.DecodePixelWidth = 5400; bitmap.EndInit(); bitmap.Freeze();
         var brush = new ImageBrush(bitmap); brush.Freeze();
         var material = new DiffuseMaterial(brush); material.Freeze();
-        var earth = SceneGeometry.Sphere(1, material, 128, 64);
+        var earth = SceneGeometry.EarthSphere(1, material, 128, 64);
         earthPose = new RotateTransform3D(earthRotation);
         var earthSystem = new Model3DGroup { Transform = earthPose };
         earthSystem.Children.Add(earth);
@@ -502,7 +577,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             var assembly = new GroundAntennaGeometry(station); var antenna = assembly.Model;
             groundAntennas[stationScales.Count] = assembly;
-            var basePoint = antenna.Transform.Transform(new Point3D()); var normal = (Vector3D)basePoint; normal.Normalize();
+            var basePoint = antenna.Transform.Transform(new Point3D()); var normal = (Vector3D)SceneGeometry.Point(EarthCoordinates.Surface(station.Latitude, station.Longitude, station.AltitudeKm));
             var scale = new ScaleTransform3D(1, 1, 1, normal.X, normal.Y, normal.Z);
             var group = new Model3DGroup { Transform = scale }; group.Children.Add(antenna);
             stationGroups.Add(group); stationScales.Add(scale); earthSystem.Children.Add(group);
@@ -513,41 +588,39 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         earthSystem.Children.Add(nightLights.Model);
         var cloudAsset = SceneGeometry.Clouds();
         clouds = new GeometryModel3D(cloudAsset.Geometry, cloudAsset.Material); cloudMaterial = clouds.Material; earthSystem.Children.Add(clouds);
+        earthSystem.Children.Add(predictionHost);
         earthSystem.Children.Add(groundTrackHost); // last, so the earlier earth-system child indices stay stable
         Scene.Children.Add(earthSystem);
-        Scene.Children.Add(SceneGeometry.SpaceBackground());
+        Scene.Children.Add(stars);
         var orbitLayer = new Model3DGroup();
         var satelliteLayer = new Model3DGroup();
         Scene.Children.Add(orbitLayer); Scene.Children.Add(satelliteLayer);
-        var templates = new Dictionary<Color, (Model3DGroup Lit, Model3DGroup Shadow)>();
-        var lowTemplates = new Dictionary<Color, (Model3DGroup Lit, Model3DGroup Shadow)>();
+        var templates = new Dictionary<(Color, SatelliteMission), (Model3DGroup Lit, Model3DGroup Shadow)>();
+        var lowTemplates = new Dictionary<(Color, SatelliteMission), (Model3DGroup Lit, Model3DGroup Shadow)>();
         modelSpans = new double[Orbits.Length]; shownAssets = new Model3D?[Orbits.Length];
         var pieceCache = new Dictionary<Model3D, SatelliteBatch.Piece[]>();
         SatelliteBatch.Piece[] Pieces(Model3D template) => pieceCache.TryGetValue(template, out var p) ? p : pieceCache[template] = SatelliteBatch.Flatten(template);
         for (int i = 0; i < Orbits.Length; i++)
         {
-            if (planeRepresentative[i])
+            if (labelEligible[i])
             {
-                // One merged mesh for the group's inertial rings, and its Earth-fixed repeat ground track.
-                var members = Orbits.Where(o => o == Orbits[i] || o.SharesPlaneWith(Orbits[i])).ToArray();
-                var orbitModel = SceneGeometry.OrbitGroup(members, colors[i]);
-                orbitModels.Add(orbitModel); orbitRepresentatives.Add(i); orbitLayer.Children.Add(orbitModel);
-                double start = 0, rotation = SolarLighting.At(SatelliteConstellation.ReferenceEpoch).EarthRotationDegrees;
-                groundTracks[i] = SceneGeometry.GroundTrack(Orbits[i], start, SatelliteConstellation.CycleSeconds(Orbits[i].Mission), rotation, colors[i]);
+                orbitModels.Add(new GeometryModel3D(new MeshGeometry3D(), SceneGeometry.MarkerMaterial(colors[i])));
+                orbitRepresentatives.Add(i); orbitLayer.Children.Add(orbitModels[i]);
             }
             var satellite = new Model3DGroup();
-            if (!templates.TryGetValue(colors[i], out var template))
+            var templateKey = (colors[i], Orbits[i].Mission);
+            if (!templates.TryGetValue(templateKey, out var template))
             {
                 template = (SceneGeometry.Satellite(colors[i], mission: Orbits[i].Mission), SceneGeometry.Satellite(colors[i], true, Orbits[i].Mission));
-                templates.Add(colors[i], template);
-                lowTemplates.Add(colors[i], (SceneGeometry.LowDetailSatellite(colors[i], false, Orbits[i].Mission), SceneGeometry.LowDetailSatellite(colors[i], true, Orbits[i].Mission)));
+                templates.Add(templateKey, template);
+                lowTemplates.Add(templateKey, (SceneGeometry.LowDetailSatellite(colors[i], false, Orbits[i].Mission), SceneGeometry.LowDetailSatellite(colors[i], true, Orbits[i].Mission)));
             }
             // Static geometry for the shared batch: full model in its rest pose, and the distant proxy.
-            staticPieces[i] = (Pieces(template.Lit), Pieces(template.Shadow), Pieces(lowTemplates[colors[i]].Lit), Pieces(lowTemplates[colors[i]].Shadow));
+            staticPieces[i] = (Pieces(template.Lit), Pieces(template.Shadow), Pieces(lowTemplates[templateKey].Lit), Pieces(lowTemplates[templateKey].Shadow));
             modelSpans[i] = template.Lit.Bounds.SizeX;
             if (Orbits[i].Mission == SatelliteMission.A)
             {
-                var wings = new MatrixTransform3D(); var dish = new MatrixTransform3D(TypeASatelliteGeometry.AntennaPose(0, false));
+                var wings = new MatrixTransform3D(); var dish = new MatrixTransform3D(TypeASatelliteGeometry.AntennaPose(0));
                 wingTransforms[i] = wings; dishTransforms[i] = dish;
                 litAssets.Add(TypeASatelliteGeometry.CreateInstance(template.Lit, wings, dish));
                 eclipsedAssets.Add(TypeASatelliteGeometry.CreateInstance(template.Shadow, wings, dish));
@@ -563,7 +636,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             satellite.Transform = transform; satelliteTransforms.Add(transform); satelliteModels.Add(satellite); satelliteLayer.Children.Add(satellite);
         }
         satelliteLayer.Children.Add(staticBatch.Model); // after the per-satellite groups, so satellite i stays child i
-        Scene.Children.Add(SceneGeometry.Atmosphere());
+        Scene.Children.Add(atmosphere);
         for (int i = 0; i < celestialTransforms.Length; i++)
         {
             var body = i == 1 ? moonRelief.Model : CelestialGeometry.Create(i);
@@ -572,15 +645,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             transform.Children.Add(celestialTransforms[i]);
             body.Transform = transform; Scene.Children.Add(body);
         }
-        for (int i = 0; i < Scene.Children.Count; i++)
+        // Explicit membership keeps layer composition independent of Scene child order.
+        foreach (var model in new Model3D[] { ambientLight, sunLight, earthSystem, orbitLayer, satelliteLayer, atmosphere, moonRelief.Model })
         {
-            if (i != 3 && (i < 7 || i == 8))
-            {
-                earthLocalScene.Children.Add(Scene.Children[i]);
-                if (i != 5) distantScene.Children.Add(Scene.Children[i]);
-            }
+            earthLocalScene.Children.Add(model);
+            if (model != satelliteLayer) distantScene.Children.Add(model);
         }
-        earthLocalScene.Children.Add(satelliteEffects.Scene); distantScene.Children.Add(satelliteEffects.Scene);
+        earthLocalScene.Children.Add(antennaInspectionLight); distantScene.Children.Add(antennaInspectionLight);
         earthLocalScene.Children.Add(coverageLinks.Scene); distantScene.Children.Add(coverageLinks.Scene);
         // Coverage is added only while the mode is on, after everything else so its translucent surfaces blend last.
         coverageGroup.Transform = new RotateTransform3D(coverageRotation);
@@ -590,8 +661,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             coverages[s] = new StationCoverage(GroundStations[s], highestShell, Orbits.Min(orbit => orbit.AltitudeKm), s);
             coverageGroup.Children.Add(coverages[s].Model);
         }
-        solarScene.Children.Add(new AmbientLight(Color.FromRgb(20, 24, 35)));
-        solarScene.Children.Add(new PointLight(Colors.White, new Point3D()) { ConstantAttenuation = 1, Range = 1000000 });
+        solarScene.Children.Add(solarAmbientLight);
+        solarScene.Children.Add(solarPointLight);
         for (int i = 0; i < solarTransforms.Length; i++)
         {
             var model = i == 3 ? new GeometryModel3D(earth.Geometry, earth.Material) : CelestialGeometry.Create(i == 0 ? 0 : i + 1);
@@ -600,7 +671,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         planetOrbits.Transform = planetOrbitScale; solarScene.Children.Add(planetOrbits);
         var saturnRings = CelestialGeometry.SaturnRings().Clone(); saturnRings.Transform = solarTransforms[6]; solarScene.Children.Add(saturnRings);
         RebuildPlanetOrbits();
-        nearSatelliteScene.Children.Add(Scene.Children[0]); nearSatelliteScene.Children.Add(sunLight); nearSatelliteScene.Children.Add(satelliteLayer);
+        nearSatelliteScene.Children.Add(ambientLight); nearSatelliteScene.Children.Add(sunLight); nearSatelliteScene.Children.Add(satelliteLayer);
         Scene.Transform = distantScene.Transform = nearSatelliteScene.Transform = earthLocalScene.Transform = solarScene.Transform = renderTranslation;
         FitOverview(); UpdateOrbitMaterials();
         UpdateScene();
@@ -626,6 +697,23 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             FrameStatus = "숨김 / 최소화 · 렌더링 일시 중지"; Notify(nameof(FrameStatus));
         }
     }
+    private void AdvanceSimulation(double elapsedWallSeconds, DateTimeOffset wallNow)
+    {
+        if (!playing) return;
+        simulationSeconds = realTime ? (wallNow - epoch).TotalSeconds : simulationSeconds + elapsedWallSeconds * speed;
+        if (playToPrediction && pinnedPrediction is { } forecast && SimulationTime >= forecast.Arrival)
+        {
+            epoch = forecast.Arrival; simulationSeconds = 0;
+            playing = realTime = playToPrediction = false; Notify(nameof(PlaybackText));
+        }
+        double limit = (SatelliteCatalog.MaximumTime - epoch).TotalSeconds;
+        if (simulationSeconds >= limit)
+        {
+            simulationSeconds = limit; playing = false; realTime = false;
+            TimeError = "지원 시각의 끝에 도달해 정지했습니다."; Notify(nameof(PlaybackText));
+        }
+        UpdateScene(true);
+    }
     private void OnRendering(object? sender, EventArgs e)
     {
         var renderTime = ((RenderingEventArgs)e).RenderingTime;
@@ -637,20 +725,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         double now = clock.Elapsed.TotalSeconds;
         if (playing)
         {
-            simulationSeconds = realTime ? (DateTimeOffset.UtcNow - epoch).TotalSeconds : simulationSeconds + (now - previousTime) * speed;
-            double limit = (new DateTimeOffset(2100, 12, 31, 23, 59, 59, TimeSpan.Zero) - epoch).TotalSeconds;
-            if (simulationSeconds >= limit)
-            {
-                simulationSeconds = limit; playing = false; realTime = false;
-                TimeError = "지원 시각의 끝에 도달해 정지했습니다."; Notify(nameof(PlaybackText));
-            }
-            UpdateScene(true);
+            AdvanceSimulation(now - previousTime, DateTimeOffset.UtcNow);
         }
-        else if (servos.Any(servo => !servo.Locked && !(servo.Target < 0 && servo.Elevation >= 90)))
+        else
         {
-            // Paused: the antennas still finish slewing on or off target (orbit time is frozen).
-            UpdateStations(now); RefreshEffects(now);
-            if (now - informationTime >= 0.2) { informationTime = now; Notify(nameof(CommunicationStatus)); }
+            // Simulation time is paused, but servo motion and communication pulses
+            // use wall-clock time. Keep effects moving after the last servo locks.
+            if (servos.Any(servo => !servo.Locked && !(servo.Target < 0 && servo.Elevation >= 90))) UpdateStations(now);
+            RefreshEffects(now);
+            if (now - informationTime >= 0.2)
+            {
+                informationTime = now; Notify(nameof(CommunicationStatus));
+            }
         }
         previousTime = now;
         sampleFrames++;
@@ -673,13 +759,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             AverageUpdateMilliseconds = sampleWorkMilliseconds / sampleFrames;
             FrameStatus = $"WPF {CompositionFps:F0} FPS · 장면 갱신 {AverageUpdateMilliseconds:F2} ms · GPU Tier {RenderCapability.Tier >> 16}";
             Notify(nameof(FrameStatus));
-            if (measuringFrames) { FrameMeasurementStatus = $"{SelectedOrbit.Name} · 실제 축척/50대/600배 · 측정 중\n{frameTiming.Summary}"; Notify(nameof(FrameMeasurementStatus)); }
+            if (measuringFrames) { FrameMeasurementStatus = $"{SelectedOrbit.Name} · 실제 축척/TLE 위성/600배 · 측정 중\n{frameTiming.Summary}"; Notify(nameof(FrameMeasurementStatus)); }
             sampleFrames = 0; sampleWorkMilliseconds = 0; sampleTime = now;
         }
     }
     private void UpdateScene(bool animationFrame = false)
     {
         double now = clock.Elapsed.TotalSeconds;
+        RefreshTrajectories();
         bool updateBodies = !animationFrame || now - celestialUpdateTime >= 0.2;
         if (updateBodies)
         {
@@ -744,7 +831,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
         // Explicit changes while paused / at 1x recompute synchronously; during fast playback a UI action would otherwise
         // stall the UI thread for the full 2048x1024 mask, so it takes the background path like animation frames.
-        if (!showNightLights) { } // hidden: no mask computation or 8 MiB uploads
+        if (!showNightLights || !showSolarShading) { } // hidden: no mask computation or 8 MiB uploads
         else if (!animationFrame && (!playing || speed <= 1)) nightLights.Update(SimulationTime, CurrentSun);
         else if (!animationFrame || now - nightRequestTime >= 0.2)
         {
@@ -756,8 +843,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (followGroundStation)
         {
             UpdateGroundTarget();
-            yaw += ((CurrentSun.EarthRotationDegrees - previousRotation + 540) % 360 - 180) * Math.PI / 180;
         }
+        if (followGroundStation || (EarthFixedView && !solarView && !followSatellite && followedCelestial < 0))
+            yaw += ((CurrentSun.EarthRotationDegrees - previousRotation + 540) % 360 - 180) * Math.PI / 180;
         for (int i = 0; i < Orbits.Length; i++)
         {
             var pose = SceneGeometry.SatellitePose(Orbits[i], OrbitTime);
@@ -772,8 +860,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 var wingPose = Matrix3D.Identity;
                 wingPose.Rotate(new Quaternion(new Vector3D(1, 0, 0), wingAngles[i]));
                 if (wings.Matrix != wingPose) wings.Matrix = wingPose;
-                var dishPose = TypeASatelliteGeometry.AntennaPose(OrbitTime + Orbits[i].InitialPhaseDegrees / 2,
-                    capturing && i == selectedIndex);
+                var dishPose = TypeASatelliteGeometry.AntennaPose(OrbitTime + Orbits[i].InitialPhaseDegrees / 2);
                 if (dish.Matrix != dishPose) dish.Matrix = dishPose;
             }
             double scale = IsTrueScale ? satellitePhysicalScales[i] : SceneScale.ObservationSatelliteScale;
@@ -781,8 +868,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             satelliteTransforms[i].Matrix = pose;
             eclipsed[i] = shadow;
         }
+        UpdatePinnedPrediction();
         UpdateVisibility();
-        operations.Update(SelectedOrbit, OrbitTime, CurrentSun.EarthRotationDegrees, capturing && !solarView && followedCelestial < 0);
+        operations.Update(SelectedOrbit, OrbitTime, CurrentSun.EarthRotationDegrees);
         UpdateStations(now);
         RefreshEffects(now);
         if (celestialOverview)
@@ -797,14 +885,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             informationTime = now;
             Notify(nameof(ElapsedText));
-            Notify(nameof(SimulationTimeText)); Notify(nameof(SolarInfo)); Notify(nameof(SelectedInfo)); Notify(nameof(SelectedEclipsed)); Notify(nameof(TimeMode));
-            Notify(nameof(CaptureStatus)); Notify(nameof(CommunicationStatus));
+            Notify(nameof(SimulationTimeText)); Notify(nameof(SelectedInfo)); Notify(nameof(SelectedEclipsed)); Notify(nameof(TimeMode));
+            Notify(nameof(CommunicationStatus));
         }
     }
     public void SetSimulationTime(DateTimeOffset time, bool useRealTime = false)
     {
+        if (time < SatelliteCatalog.MinimumTime || time > SatelliteCatalog.MaximumTime)
+        { TimeError = $"TLE 기준 ±7일 범위만 지원: {SatelliteCatalog.MinimumTime:u} ~ {SatelliteCatalog.MaximumTime:u}. satellites.tle를 갱신하세요."; return; }
         _ = SolarLighting.At(time);
+        playToPrediction = false;
         contactSearchMessage = "";
+        PassPredictionStatus = "시각 변경 · 다음 통과를 다시 계산하세요."; Notify(nameof(PassPredictionStatus));
         epoch = time.ToUniversalTime(); simulationSeconds = 0; realTime = useRealTime; playing = useRealTime;
         if (useRealTime) Speed = 1;
         TimeError = ""; TimeInput = SimulationTime.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
@@ -814,7 +906,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     public void Rotate(double dx, double dy)
     {
-        if (followGroundStation && distance < 0.1)
+        if (followGroundStation && !antennaView && distance < 0.1)
         {
             double degreesPerPixel = distance * 2 * Math.Tan(21 * Math.PI / 180) * 180 / Math.PI / viewportWidth;
             groundLatitude = Math.Clamp(groundLatitude + dy * degreesPerPixel, -84, 84);
@@ -826,12 +918,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public void Zoom(int delta)
     {
         fitOverview = false;
-        double minimum = celestialOverview ? 5 : followedCelestial >= 0 ? BodyRadius(followedCelestial) * (followedCelestial == 7 ? 5.52 : 2.4) : cameraTarget == new Point3D() ? 3.4
+        double minimum = antennaView ? 0.035 : celestialOverview ? 5 : followedCelestial >= 0 ? BodyRadius(followedCelestial) * (followedCelestial == 7 ? 5.52 : 2.4) : cameraTarget == new Point3D() ? 3.4
             : followSatellite ? (IsTrueScale ? SatelliteFocusDistance * 0.6 : 0.35 * SceneScale.ObservationSatelliteScale) : 0.003;
         double previousDistance = distance;
         distance = Math.Clamp(distance * Math.Exp(-delta * 0.001), minimum, earthOverview ? IsTrueScale ? 1000 : 60 : IsTrueScale && (celestialOverview || followedCelestial >= 0) ? 10000000
             : celestialOverview || followedCelestial >= 0 ? 10000 : 15); NotifyCamera();
-        if (followGroundStation && previousDistance >= 0.1 && distance < 0.1) { UpdateGroundTarget(true); NotifyCamera(); }
+        if (followGroundStation && !antennaView && previousDistance >= 0.1 && distance < 0.1) { UpdateGroundTarget(true); NotifyCamera(); }
     }
     public void SetViewportSize(double width, double height)
     {
@@ -857,19 +949,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void FocusSolarOverview(bool includeOuterPlanets)
     {
         fullSolarSystem = includeOuterPlanets;
-        solarView = true; earthOverview = false; RebuildPlanetOrbits();
-        followSatellite = followGroundStation = false; followedCelestial = -1;
-        celestialOverview = true; fitOverview = true;
+        SetViewMode(ViewMode.SolarOverview); RebuildPlanetOrbits();
+        fitOverview = true;
         yaw = 0.5; pitch = 1.0;
         UpdateScene(); FitOverview(); NotifyCamera();
     }
     private void FocusOperations()
     {
-        solarView = earthOverview = celestialOverview = followGroundStation = fitOverview = false;
-        followSatellite = true;
-        followedCelestial = -1;
+        SetViewMode(ViewMode.Satellite);
+        fitOverview = false;
         var normal = (Vector3D)SceneGeometry.Point(SelectedOrbit.Position(OrbitTime)); normal.Normalize();
-        cameraTarget = SceneGeometry.Point(SelectedOrbit.Position(OrbitTime)); distance = 0.9;
+        cameraTarget = SceneGeometry.Point(SelectedOrbit.Position(OrbitTime));
+        // The observation-scale framing would make a physical-size satellite subpixel.
+        distance = IsTrueScale ? SatelliteFocusDistance : 0.9;
         yaw = Math.Atan2(normal.X, normal.Z) + 0.9; pitch = Math.Clamp(Math.Asin(normal.Y) + 0.2, -1.35, 1.35);
         UpdateOrbitMaterials(); UpdateScene(); NotifyCamera();
     }
@@ -882,14 +974,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     private void UpdateOrbitMaterials()
     {
+        RefreshTrajectories();
         for (int i = 0; i < orbitModels.Count; i++)
         {
             int representative = orbitRepresentatives[i];
-            bool selected = representative == selectedIndex || Orbits[representative].SharesPlaneWith(SelectedOrbit);
+            bool selected = representative == selectedIndex;
             double brightness = selected ? 0.9 : 0.45;
             var c = colors[representative];
-            // Each satellite has its own plane (repeat ground tracks), so by default only the selected group's rings show.
-            var material = followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
+            // Never infer shared orbital planes from names or display models.
+            var material = showAllOrbits || followGroundStation || followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
             orbitModels[i].Material = material; orbitModels[i].BackMaterial = material;
         }
     }
@@ -914,11 +1007,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly List<Model3DGroup> stationGroups = [];
     private readonly double[] modelSpans;
     private readonly Model3D?[] shownAssets;
-    private readonly bool[] planeRepresentative;
-    private readonly bool[] individual = new bool[SatelliteConstellation.Count], visibleNow = new bool[SatelliteConstellation.Count];
-    private readonly double[] pixelSizes = new double[SatelliteConstellation.Count];
+    private readonly bool[] labelEligible;
+    private readonly bool[] individual = new bool[SatelliteCatalog.Count], visibleNow = new bool[SatelliteCatalog.Count];
+    private readonly double[] pixelSizes = new double[SatelliteCatalog.Count];
     private readonly (SatelliteBatch.Piece[] Lit, SatelliteBatch.Piece[] Shadow, SatelliteBatch.Piece[] LowLit, SatelliteBatch.Piece[] LowShadow)[] staticPieces
-        = new (SatelliteBatch.Piece[], SatelliteBatch.Piece[], SatelliteBatch.Piece[], SatelliteBatch.Piece[])[SatelliteConstellation.Count];
+        = new (SatelliteBatch.Piece[], SatelliteBatch.Piece[], SatelliteBatch.Piece[], SatelliteBatch.Piece[])[SatelliteCatalog.Count];
     private readonly SatelliteBatch staticBatch = new();
     private double batchSeconds = double.NaN;
     private bool batchTrueScale;
@@ -929,7 +1022,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (modelSpans is null || satelliteModels.Count < Orbits.Length || staticPieces[^1].Lit is null || solarView) return;
         var camera = CameraPosition;
         var forward = CameraDirection; forward.Normalize();
-        var right = Vector3D.CrossProduct(forward, new Vector3D(0, 1, 0)); right.Normalize();
+        var right = Vector3D.CrossProduct(forward, CameraUpDirection); right.Normalize();
         var up = Vector3D.CrossProduct(right, forward);
         double focal = viewportWidth / (2 * Math.Tan(21 * Math.PI / 180));
         for (int i = 0; i < Orbits.Length; i++)
@@ -959,12 +1052,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             bool alone = visibleNow[i] && (few || animateAllSatellites || i == selectedIndex);
             individual[i] = alone;
-            Model3D asset = !alone ? HiddenAsset : eclipsed[i] ? eclipsedAssets[i] : litAssets[i];
+            bool shadow = showSolarShading && eclipsed[i];
+            Model3D asset = !alone ? HiddenAsset : shadow ? eclipsedAssets[i] : litAssets[i];
             if (!ReferenceEquals(shownAssets[i], asset)) { shownAssets[i] = asset; satelliteModels[i].Children[0] = asset; }
             if (visibleNow[i] && !alone)
             {
                 var pieces = staticPieces[i];
-                staticBatch.Add(i, pixelSizes[i] < 24 ? (eclipsed[i] ? pieces.LowShadow : pieces.LowLit) : (eclipsed[i] ? pieces.Shadow : pieces.Lit),
+                staticBatch.Add(i, pixelSizes[i] < 24 ? (shadow ? pieces.LowShadow : pieces.LowLit) : (shadow ? pieces.Shadow : pieces.Lit),
                     satelliteTransforms[i].Matrix);
             }
         }
@@ -982,16 +1076,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
     private void UpdateLabels()
     {
+        UpdateGroundTrackTimeLabels();
         var camera = CameraPosition;
         var forward = CameraDirection; forward.Normalize();
-        var right = Vector3D.CrossProduct(forward, new Vector3D(0, 1, 0)); right.Normalize();
+        var right = Vector3D.CrossProduct(forward, CameraUpDirection); right.Normalize();
         var up = Vector3D.CrossProduct(right, forward);
         double focal = viewportWidth / (2 * Math.Tan(21 * Math.PI / 180));
         int visibleIndex = 0;
         for (int i = 0; i < Orbits.Length; i++)
         {
             var label = labelCache[i];
-            bool representative = planeRepresentative[i] || i == selectedIndex;
+            bool representative = labelEligible[i] || i == selectedIndex;
             if (!showSatelliteLabels || !representative || celestialOverview || followedCelestial >= 0 || (followSatellite && i != selectedIndex)) { SatelliteLabels.Remove(label); continue; }
             var position = SceneGeometry.Point(Orbits[i].Position(OrbitTime));
             var ray = position - camera;
@@ -1041,8 +1136,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         for (int i = 0; i < antennaAnchors.Length; i++)
             antennaAnchors[i] = earthPose.Transform(stationScales[i].Transform(groundAntennas[i].FeedPoint));
-        // Station links come from the network schedule; the effect class only draws the selected satellite's imaging.
-        satelliteEffects.Update(operations, antennaAnchors, false, now, CameraDirection.Length);
+        // Station links come from the network schedule.
         bool links = ShowCommunications && !solarView && followedCelestial < 0;
         for (int s = 0; s < antennaAnchors.Length; s++)
         {
@@ -1050,15 +1144,22 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             coverageLinks.Update(s, antennaAnchors[s], links && target >= 0 && servos[s].Locked ? SceneGeometry.Point(Orbits[target].Position(OrbitTime)) : null,
                 now, CameraDirection.Length);
         }
-    }    private void NotifyCamera(bool updateTiles = true)
+    }
+    private void NotifyCamera(bool updateTiles = true)
     {
+        antennaInspectionLight.Color = antennaView ? Color.FromRgb(225, 228, 235) : Colors.Black;
+        var lightDirection = CameraDirection;
+        var lightRight = Vector3D.CrossProduct(lightDirection, CameraUpDirection);
+        if (lightRight.LengthSquared > 0) lightRight.Normalize();
+        antennaInspectionLight.Direction = lightDirection + lightRight * lightDirection.Length * 0.65;
+        Notify(nameof(CameraUpDirection));
         var origin = RenderOrigin;
         renderTranslation.OffsetX = -origin.X; renderTranslation.OffsetY = -origin.Y; renderTranslation.OffsetZ = -origin.Z;
         Notify(nameof(CameraPosition)); Notify(nameof(RenderCameraPosition)); Notify(nameof(CameraDirection)); Notify(nameof(CameraNearPlane));
         Notify(nameof(CameraFarPlane)); Notify(nameof(NearSatellitePlane)); Notify(nameof(MainScene)); Notify(nameof(NearSatelliteScene)); Notify(nameof(SkyScene));
         Notify(nameof(IsSolarSystemView)); Notify(nameof(ViewDescription)); NotifyFocusMode();
         UpdateLabels();
-        double scale = followGroundStation ? Math.Min(1, distance / 0.75) : 1;
+        double scale = followGroundStation && !antennaView ? Math.Min(1, distance / 0.75) : 1;
         bool stationScaleChanged = false;
         foreach (var stationScale in stationScales)
         {
@@ -1070,11 +1171,30 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         // Earth rotation changes the camera, but not the Earth-fixed tile footprint.
         if (updateTiles) QueueMapTiles();
     }
+    private void FocusAntenna()
+    {
+        var station = groundLatitude == 0 && groundLongitude == 0 ? GroundStations[0]
+            : GroundStations.MinBy(s => Math.Pow(s.Latitude - groundLatitude, 2) + Math.Pow(s.Longitude - groundLongitude, 2))!;
+        groundLatitude = station.Latitude; groundLongitude = station.Longitude;
+        SetViewMode(ViewMode.GroundAntenna); fitOverview = false;
+        distance = 0.105;
+        UpdateGroundTarget(true);
+        yaw += 0.65; pitch = Math.Clamp(pitch - 0.65, -1.4, 1.4);
+        UpdateOrbitMaterials(); UpdateScene(); NotifyCamera();
+    }
     private void FocusGround(GroundStation? station)
     {
-        solarView = earthOverview = false;
-        celestialOverview = false; followedCelestial = -1;
-        fitOverview = false; followSatellite = false; followGroundStation = true;
+        SetViewMode(ViewMode.GroundStation);
+        // The regional overview is a geographical pass forecast, just like the globe view.
+        // Reset optional inertial paths when entering it so they cannot be mistaken for ground tracks.
+        if (station is null)
+        {
+            ShowOrbits = false;
+            ShowGroundTracks = true;
+            ShowGroundTrackTimes = true;
+        }
+        RefreshTrajectories(true);
+        fitOverview = false;
         groundLatitude = station?.Latitude ?? GroundStations.Average(s => s.Latitude);
         groundLongitude = station?.Longitude ?? GroundStations.Average(s => s.Longitude);
         distance = station is null ? 0.75 : 0.012; tileRequestKey = "";
@@ -1084,13 +1204,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         double lat = groundLatitude * Math.PI / 180;
         double lon = (groundLongitude + CurrentSun.EarthRotationDegrees) * Math.PI / 180;
-        cameraTarget = new Point3D(Math.Cos(lat) * Math.Cos(lon), Math.Sin(lat), -Math.Cos(lat) * Math.Sin(lon));
+        cameraTarget = SceneGeometry.Point(EarthCoordinates.ToInertial(EarthCoordinates.Surface(groundLatitude, groundLongitude), CurrentSun.EarthRotationDegrees));
+        if (antennaView) cameraTarget = (Point3D)((Vector3D)cameraTarget * 1.026);
         if (align) { yaw = Math.PI / 2 + lon; pitch = lat; }
     }
     private void QueueMapTiles()
     {
         if (disposed) return;
-        if (!followGroundStation || distance >= 0.1)
+        if (!followGroundStation || antennaView || distance >= 0.1)
         {
             tileCancellation?.Cancel(); tileRequestKey = ""; tileLayer.Children.Clear();
             tilesShown = false; ApplyGlobalLayers();
@@ -1109,20 +1230,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await Task.Delay(250, token).ConfigureAwait(false);
-            using var slots = new SemaphoreSlim(4);
-            var results = await Task.WhenAll(plan.Select(async tile =>
-            {
-                await slots.WaitAsync(token).ConfigureAwait(false);
-                try
-                {
-                    byte[] bytes = await tileManager.GetAsync(tile, token).ConfigureAwait(false);
-                    BitmapSource image = MapTileGeometry.Decode(bytes);
-                    return (Tile: tile, Image: (BitmapSource?)image);
-                }
-                catch (Exception ex) when (ex is InvalidDataException or IOException or NotSupportedException or ArgumentException or FormatException or InvalidOperationException or OperationCanceledException && !token.IsCancellationRequested)
-                { return (Tile: tile, Image: (BitmapSource?)null); }
-                finally { slots.Release(); }
-            })).ConfigureAwait(false);
+            var results = await tileLoader.LoadAsync(plan, token).ConfigureAwait(false);
             await dispatcher.InvokeAsync(() =>
             {
                 if (disposed || token.IsCancellationRequested || tileRequestKey != key) return;
@@ -1146,7 +1254,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         if (disposed) return;
         disposed = true; SetRenderingActive(false); nightLights.Dispose(); moonRelief.Dispose();
-        tileCancellation?.Cancel(); tileCancellation?.Dispose(); tileManager.Dispose();
+        tileCancellation?.Cancel(); tileCancellation?.Dispose(); tileLoader.Dispose();
     }
 
     private sealed class ActionCommand(Action<object?> action) : ICommand

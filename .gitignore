@@ -5,3 +5,6 @@
 *.user
 Published/
 preview*.png
+
+# Local interactive preview builds
+Preview/

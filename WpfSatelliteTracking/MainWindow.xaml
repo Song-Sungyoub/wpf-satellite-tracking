@@ -316,15 +316,15 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions><Grid.Background><RadialGradientBrush><GradientStop Color="#182A43" Offset="0"/><GradientStop Color="#090F1D" Offset="1"/></RadialGradientBrush></Grid.Background>
                     <Grid Grid.Row="1">
                     <Viewport3D IsHitTestVisible="False">
-                        <Viewport3D.Camera><PerspectiveCamera Position="0,0,0" LookDirection="{Binding CameraDirection}" UpDirection="0,1,0" FieldOfView="42" NearPlaneDistance="1" FarPlaneDistance="1000"/></Viewport3D.Camera>
+                        <Viewport3D.Camera><PerspectiveCamera Position="0,0,0" LookDirection="{Binding CameraDirection}" UpDirection="{Binding CameraUpDirection}" FieldOfView="42" NearPlaneDistance="1" FarPlaneDistance="1000"/></Viewport3D.Camera>
                         <ModelVisual3D Content="{Binding SkyScene}"/>
                     </Viewport3D>
                     <Viewport3D x:Name="Viewport" IsHitTestVisible="False" SizeChanged="OnViewportSizeChanged">
-                        <Viewport3D.Camera><PerspectiveCamera Position="{Binding RenderCameraPosition}" LookDirection="{Binding CameraDirection}" UpDirection="0,1,0" FieldOfView="42" NearPlaneDistance="{Binding CameraNearPlane}" FarPlaneDistance="{Binding CameraFarPlane}"/></Viewport3D.Camera>
+                        <Viewport3D.Camera><PerspectiveCamera Position="{Binding RenderCameraPosition}" LookDirection="{Binding CameraDirection}" UpDirection="{Binding CameraUpDirection}" FieldOfView="42" NearPlaneDistance="{Binding CameraNearPlane}" FarPlaneDistance="{Binding CameraFarPlane}"/></Viewport3D.Camera>
                         <ModelVisual3D Content="{Binding MainScene}"/>
                     </Viewport3D>
                     <Viewport3D x:Name="SatelliteViewport" IsHitTestVisible="False">
-                        <Viewport3D.Camera><PerspectiveCamera Position="{Binding RenderCameraPosition}" LookDirection="{Binding CameraDirection}" UpDirection="0,1,0" FieldOfView="42" NearPlaneDistance="{Binding NearSatellitePlane}" FarPlaneDistance="0.005"/></Viewport3D.Camera>
+                        <Viewport3D.Camera><PerspectiveCamera Position="{Binding RenderCameraPosition}" LookDirection="{Binding CameraDirection}" UpDirection="{Binding CameraUpDirection}" FieldOfView="42" NearPlaneDistance="{Binding NearSatellitePlane}" FarPlaneDistance="0.005"/></Viewport3D.Camera>
                         <ModelVisual3D Content="{Binding NearSatelliteScene}"/>
                     </Viewport3D>
                     <!-- Keep routine pointer routing out of the 3D meshes; click picking remains explicit. -->
@@ -336,121 +336,136 @@
                             <Button Content="{Binding Name}" Foreground="{Binding Color}" Background="#D9081425" BorderBrush="#43556F" Padding="7,4" FontSize="11" Command="{Binding DataContext.SelectOrbitCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Orbit}"/>
                         </DataTemplate></ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    <ItemsControl ItemsSource="{Binding GroundTrackTimeLabels}" IsHitTestVisible="False">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter"><Setter Property="Visibility" Value="{Binding Visibility}"/><Setter Property="RenderTransform"><Setter.Value><TranslateTransform X="{Binding Left}" Y="{Binding Top}"/></Setter.Value></Setter></Style></ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate><DataTemplate><Border Background="#E0081923" BorderBrush="#8872EE96" BorderThickness="1" CornerRadius="4" Padding="5,2"><TextBlock Text="{Binding Name}" Foreground="#B0FFCA" FontSize="11"/></Border></DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <ItemsControl ItemsSource="{Binding CelestialLabels}" IsHitTestVisible="False">
                         <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                         <ItemsControl.ItemContainerStyle><Style TargetType="ContentPresenter"><Setter Property="Visibility" Value="{Binding Visibility}"/><Setter Property="RenderTransform"><Setter.Value><TranslateTransform X="{Binding Left}" Y="{Binding Top}"/></Setter.Value></Setter></Style></ItemsControl.ItemContainerStyle>
                         <ItemsControl.ItemTemplate><DataTemplate><Border Background="#C9081425" CornerRadius="4" Padding="6,3"><TextBlock Text="{Binding Name}" Foreground="{Binding Color}" FontSize="11"/></Border></DataTemplate></ItemsControl.ItemTemplate>
                     </ItemsControl></Grid>
-                    <Border Margin="14,12" Padding="10,7" CornerRadius="8" Background="#B3081425" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
+                    <Border x:Name="ViewportInfoPanel" Margin="14,12" Padding="10,7" CornerRadius="8" Background="#B3081425" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False">
                         <StackPanel>
                             <TextBlock Text="{Binding ViewDescription}" FontSize="12" Foreground="#B7CCE5" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding FrameStatus}" FontFamily="Consolas" FontSize="11" Foreground="#65DEE0" Margin="0,4,0,0" ToolTip="고유 WPF Rendering 콜백 기준입니다. GPU 표시 완료 FPS와 다를 수 있습니다. 장면 갱신 시간은 UI 스레드의 시뮬레이션·상태 갱신 시간입니다."/>
                             <TextBlock Text="{Binding TileStatus}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                            <TextBlock Text="로컬 상세 지도: NASA GIBS · Landsat/WELD · 2000년 합성 · 약 30m급 / 실행 중 통신 없음" FontSize="10" Foreground="#899BB5" Margin="0,3,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
-                    <Border Grid.Row="1" Margin="14,0,14,10" Padding="8,4" CornerRadius="6" Background="#B3081425"
+                    <Border x:Name="ViewportHelpPanel" Grid.Row="1" Margin="14,0,14,10" Padding="8,4" CornerRadius="6" Background="#B3081425"
                             HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="False">
                         <TextBlock Text="드래그: 회전 / 지역 상세 이동 · 휠: 확대/축소 · 수신소 버튼: 고해상도 지역 보기" Foreground="#B7CCE5" FontSize="11"/>
                     </Border>
-                    <Button x:Name="ExitFullScreenButton" Grid.Row="1" Content="전체 화면 종료 (Esc)" Click="OnToggleFullScreen" Visibility="Collapsed"
-                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,14,0" Padding="12,6" FontSize="12" Opacity="0.85"/>
                 </Grid>
             </Border>
             <ScrollViewer x:Name="SidePanel" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0"><StackPanel>
-                <Expander Header="시뮬레이션" Style="{StaticResource Section}">
+                <Expander Header="시간" Style="{StaticResource Section}">
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
-                            <TextBlock Text="{Binding SimulationTimeText}" FontFamily="Consolas" FontSize="14" Margin="0,0,0,8"/>
-                            <DockPanel Margin="0,0,0,8">
+                            <TextBlock Text="{Binding SimulationTimeText}" FontFamily="Consolas" FontSize="14"/>
+                            <DockPanel Margin="0,6,0,8">
                                 <Button DockPanel.Dock="Right" Content="현재 시각" Command="{Binding CurrentTimeCommand}" Padding="8,4" Margin="0" FontSize="11"/>
                                 <TextBlock Text="{Binding TimeMode}" Foreground="#65DEE0" FontSize="11" VerticalAlignment="Center"/>
                             </DockPanel>
-                            <Expander Header="날짜·시간 설정 (KST)" FontSize="12" Margin="0,0,0,8">
+                            <TextBlock Text="{Binding Speed, StringFormat=재생 속도 · {0:F0}배}"/>
+                            <Slider Minimum="1" Maximum="600" Value="{Binding Speed}" Margin="0,6,0,6" AutomationProperties.Name="시뮬레이션 재생 속도"/>
+                            <Expander Header="날짜·시간 지정 (KST)" FontSize="12">
                                 <StackPanel Margin="0,6,0,0">
-                                    <TextBox Text="{Binding TimeInput, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="시뮬레이션 날짜와 시간, 한국 시간" FontFamily="Consolas"/>
-                                    <TextBlock Text="yyyy-MM-dd HH:mm:ss" FontSize="10" Foreground="#899BB5" Margin="0,4"/>
-                                    <Button Content="시간 적용" Command="{Binding ApplyTimeCommand}" Padding="8,5" Margin="0"/>
+                                    <TextBox Text="{Binding TimeInput, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="시뮬레이션 날짜와 시간, 한국 시간" FontFamily="Consolas"
+                                             ToolTip="yyyy-MM-dd HH:mm:ss · TLE 기준 ±7일"/>
+                                    <Button Content="시간 적용" Command="{Binding ApplyTimeCommand}" Padding="8,5" Margin="0,6,0,0"/>
                                 </StackPanel>
                             </Expander>
                             <TextBlock Text="{Binding TimeError}" TextWrapping="Wrap" Foreground="#FFBC5F" FontSize="11"/>
-                            <TextBlock Text="{Binding Speed, StringFormat=재생 속도 · {0:F0}배}" FontSize="13" Margin="0,4,0,0"/>
-                            <Slider Minimum="1" Maximum="600" Value="{Binding Speed}" Margin="0,6,0,8" AutomationProperties.Name="시뮬레이션 재생 속도"/>
-                            <TextBlock Text="{Binding SolarInfo}" FontSize="12" Foreground="#FFDC95" LineHeight="20"/>
                         </StackPanel>
                     </Border>
                 </Expander>
-                <Expander Header="보기 · 태양 · 달 · 행성 8개" Style="{StaticResource Section}">
+                <Expander Header="위성" Style="{StaticResource Section}">
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
-                            <ComboBox x:Name="ScaleModeSelector" SelectedIndex="{Binding ScaleModeIndex, Mode=TwoWay}" Margin="0,0,0,6" AutomationProperties.Name="축척 모드">
-                                <ComboBoxItem Content="관측용 모드"/><ComboBoxItem Content="실제 축척 모드"/>
+                            <DockPanel Margin="0,0,0,6">
+                                <Button DockPanel.Dock="Right" Content="TLE 불러오기" Command="{Binding LoadTleCommand}" Padding="8,4" Margin="0" FontSize="11"
+                                        ToolTip="다른 TLE 파일을 새 창으로 엽니다."/>
+                                <TextBlock Text="{Binding CatalogSummary}" Foreground="#65DEE0" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <ListBox ItemsSource="{Binding SatellitesView}" SelectedItem="{Binding SelectedOrbit}" MaxHeight="200" Background="#0B1426" BorderThickness="0" Foreground="#E7EEF8" Margin="0,0,0,8" AutomationProperties.Name="위성 선택">
+                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="10,4"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/></DataTemplate></ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding SelectedOrbit.Name}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding SelectedInfo}" TextWrapping="Wrap" Foreground="#B7CCE5" FontSize="11" LineHeight="18" Margin="0,2,0,0"
+                                       ToolTip="위성 모형은 표시용 가상 모형입니다."/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="지상국 추적" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding CommunicationStatus}" Foreground="#B7CCE5" FontSize="11" TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,8"
+                                       ToolTip="수신소마다 고각 10° 이상인 서로 다른 위성을 추적하고, 통과 후 천정으로 돌아갑니다. 좌표는 도시 대표 좌표입니다."/>
+                            <CheckBox Content="통신선 · 송수신 펄스" IsChecked="{Binding ShowCommunications}" Margin="0,0,0,6"
+                                      ToolTip="안테나가 위성을 포착하면 통신선을 그립니다. 흰 펄스: 송신 / 파란 펄스: 수신"/>
+                            <CheckBox Content="수신소 커버리지" IsChecked="{Binding ShowCoverage}" Margin="0,0,0,8"
+                                      ToolTip="수신소별 고각 10° 이상 가시 원뿔과 지상 커버리지를 표시합니다."/>
+                            <Button Content="선택 위성 다음 통과 계산" Command="{Binding PredictPassesCommand}" Style="{StaticResource PanelButton}"/>
+                            <TextBlock Text="{Binding PassPredictionStatus}" TextWrapping="Wrap" FontSize="11" Foreground="#B7CCE5" Margin="0,0,0,6">
+                                <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            <Button Content="다음 교신 시점으로 이동" Command="{Binding FindContactCommand}" Style="{StaticResource PanelButton}" Margin="0"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="표시" Style="{StaticResource Section}">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <CheckBox Content="지상궤적 (향후 1회전)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,6" ToolTip="선택 위성의 예상 지상궤적 · 초록"/>
+                            <CheckBox Content="통과 시각 표시 (10분 간격)" IsChecked="{Binding ShowGroundTrackTimes}" Margin="20,0,0,6" ToolTip="지상궤적 위에 KST 시각과 위도/경도를 표시합니다."/>
+                            <CheckBox Content="모든 위성 지상궤적" IsChecked="{Binding ShowAllOrbits}" Margin="0,0,0,6" ToolTip="위성 색으로 표시 · 선택 위성은 초록"/>
+                            <CheckBox Content="선택 위성 공중 경로" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="모든 위성 지상궤적을 켜면 숨겨집니다."/>
+                            <CheckBox Content="위성 이름표" IsChecked="{Binding ShowSatelliteLabels}" Margin="0,0,0,6"/>
+                            <CheckBox Content="지구 고정 보기" IsChecked="{Binding EarthFixedView}" Margin="0,0,0,10" ToolTip="카메라가 지구와 함께 회전해 지도가 멈춰 보입니다."/>
+                            <TextBlock Text="지구 환경" Foreground="#899BB5" FontSize="11" Margin="0,0,0,6"/>
+                            <WrapPanel>
+                                <CheckBox Content="달" IsChecked="{Binding ShowMoon}" Margin="0,0,14,6"/>
+                                <CheckBox Content="구름" IsChecked="{Binding ShowClouds}" Margin="0,0,14,6"/>
+                                <CheckBox Content="대기층" IsChecked="{Binding ShowAtmosphere}" Margin="0,0,14,6"/>
+                                <CheckBox Content="별" IsChecked="{Binding ShowStars}" Margin="0,0,14,6"/>
+                                <CheckBox Content="주야간 음영" IsChecked="{Binding ShowSolarShading}" Margin="0,0,14,6" ToolTip="끄면 태양 반대편도 밝게 표시합니다."/>
+                                <CheckBox Content="야간 불빛" IsChecked="{Binding ShowNightLights}" Margin="0,0,14,6" ToolTip="빠른 재생 시 부하가 큽니다."/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="예측 검증" Style="{StaticResource Section}" IsExpanded="False">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <TextBox Text="{Binding PredictionTimeInput, UpdateSourceTrigger=PropertyChanged}" ToolTip="yyyy-MM-dd HH:mm:ss (KST) · 빈 입력은 10분 뒤" Margin="0,0,0,6" FontFamily="Consolas"/>
+                            <Button Content="예측 지점 고정" Command="{Binding PinPredictionCommand}" Style="{StaticResource PanelButton}" ToolTip="모든 위성 지상궤적을 켜면 전체 위성에 고정합니다."/>
+                            <Button Content="예측 시각까지 재생" Command="{Binding ReplayPredictionCommand}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="고정 예측 지우기" Command="{Binding ClearPredictionCommand}" Style="{StaticResource PanelButton}"/>
+                            <TextBlock Text="{Binding PredictionStatus}" TextWrapping="Wrap" Foreground="#FFD35A" FontSize="11"/>
+                            <TextBlock Text="{Binding PredictionDetails}" TextWrapping="Wrap" Foreground="#B7CCE5" FontSize="10" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <Expander Header="태양계 · 성능 테스트" Style="{StaticResource Section}" IsExpanded="False">
+                    <Border Style="{StaticResource SectionBody}">
+                        <StackPanel>
+                            <ComboBox x:Name="ScaleModeSelector" SelectedIndex="{Binding ScaleModeIndex, Mode=TwoWay}" Margin="0,0,0,8" AutomationProperties.Name="축척 모드">
+                                <ComboBoxItem Content="관측용 축척" ToolTip="태양계 거리는 1 AU = 18 · 천체 크기 과장"/>
+                                <ComboBoxItem Content="실제 축척" ToolTip="실제 비율 · 위성 모형 폭은 가정값"/>
                             </ComboBox>
-                            <TextBlock Text="{Binding ScaleDescription}" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="0,0,0,8"/>
-                            <Button Content="지구 주변 보기 · 달 / 위성" Command="{Binding FocusEarthSystemCommand}" Tag="{Binding IsEarthFocus}" Style="{StaticResource PanelButton}"/>
-                            <Button Content="태양계 전체 보기 · 행성 8개" Command="{Binding FocusCelestialsCommand}" Tag="{Binding IsSolarFocus}" Style="{StaticResource PanelButton}"/>
-                            <Button Content="내행성 보기 · 수성~화성" Command="{Binding FocusInnerPlanetsCommand}" Tag="{Binding IsInnerFocus}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="지구 주변 보기" Command="{Binding FocusEarthSystemCommand}" Tag="{Binding IsEarthFocus}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="태양계 전체 보기" Command="{Binding FocusCelestialsCommand}" Tag="{Binding IsSolarFocus}" Style="{StaticResource PanelButton}"/>
+                            <Button Content="내행성 보기" Command="{Binding FocusInnerPlanetsCommand}" Tag="{Binding IsInnerFocus}" Style="{StaticResource PanelButton}"/>
                             <Button Content="태양 확대 보기" Command="{Binding FocusSunCommand}" Tag="{Binding IsSunFocus}" Style="{StaticResource PanelButton}"/>
-                            <TextBlock Text="전체 보기의 작은 천체는 이름 버튼으로 확대&#10;실제 축척은 크기를 유지하고 카메라만 접근&#10;600배에서도 행성 공전은 수 시간 이상 소요" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="0,2,0,8"/>
-                            <ItemsControl ItemsSource="{Binding CelestialLabels}">
+                            <ItemsControl ItemsSource="{Binding CelestialLabels}" Margin="0,2,0,6">
                                 <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate><DataTemplate><Button Content="{Binding Name}" Foreground="{Binding Color}" Command="{Binding DataContext.FocusCelestialCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Padding="9,4" FontSize="11" Margin="0,0,6,6"/></DataTemplate></ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </StackPanel>
-                    </Border>
-                </Expander>
-                <Expander Header="위성 / 궤도 · 총 50대" Style="{StaticResource Section}">
-                    <Border Style="{StaticResource SectionBody}">
-                        <StackPanel>
-                            <TextBlock Text="A형 30 / B형 20" Foreground="#65DEE0" Margin="0,0,0,6"/>
-                            <ListBox ItemsSource="{Binding SatellitesView}" SelectedItem="{Binding SelectedOrbit}" MaxHeight="230" VirtualizingPanel.IsVirtualizingWhenGrouping="True" Background="#0B1426" BorderThickness="0" Foreground="#E7EEF8" Margin="0,0,0,10" AutomationProperties.Name="위성 선택">
-                                <ListBox.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="#65DEE0" FontWeight="SemiBold" Margin="8,8,0,4"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></ListBox.GroupStyle>
-                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}"><Setter Property="Padding" Value="10,5"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/></Style></ListBox.ItemContainerStyle>
-                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/></DataTemplate></ListBox.ItemTemplate>
-                            </ListBox>
-                            <TextBlock Text="{Binding SelectedInfo}" TextWrapping="Wrap" Foreground="#B7CCE5" FontSize="12" LineHeight="20"/>
-                        </StackPanel>
-                    </Border>
-                </Expander>
-                <Expander Header="선택 위성 · 통신 / 촬영" Style="{StaticResource Section}">
-                    <Border Style="{StaticResource SectionBody}">
-                        <StackPanel>
-                            <CheckBox Content="통신선·송수신 펄스 표시" IsChecked="{Binding ShowCommunications}" Margin="0,0,0,8"/>
-                            <CheckBox Content="수신소 커버리지 모드" IsChecked="{Binding ShowCoverage}" Margin="0,0,0,2"
-                                      ToolTip="수신소별 고도각 10° 이상 가시 원뿔과 지상 커버리지를 표시합니다."/>
-                            <TextBlock Text="수신소마다 다른 위성을 추적 · 통과 후 천정 대기" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="24,0,0,8"/>
-                            <TextBlock Text="{Binding CommunicationStatus}" Foreground="#B7CCE5" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <Button Content="교신 가능한 다음 시점 보기" Command="{Binding FindContactCommand}" Style="{StaticResource PanelButton}"/>
-                            <Button Content="{Binding CaptureButtonText}" Command="{Binding ToggleCaptureCommand}" Tag="{Binding IsCapturing}" Style="{StaticResource PanelButton}"/>
-                            <TextBlock Text="{Binding CaptureStatus}" Foreground="#FFBC5F" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <TextBlock Text="교신: 고도각 10° 이상 / 지구 가림 반영&#10;흰 펄스: 송신 / 파란 펄스: 수신&#10;촬영은 영역 시각화 · 영상 파일 생성 없음&#10;계산·효과는 오프라인으로 동작" Foreground="#899BB5" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <TextBlock Text="지상 안테나 · 대전 / 오사카 / 상하이" Foreground="#64F0B4" FontSize="12"/>
-                            <TextBlock Text="도시 대표 좌표 · 식별용 확대 모형" TextWrapping="Wrap" Foreground="#899BB5" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
-                </Expander>
-                <Expander Header="표시 · 부하 조절" Style="{StaticResource Section}">
-                    <Border Style="{StaticResource SectionBody}">
-                        <StackPanel>
-                            <CheckBox Content="궤도선 (선택 위성의 궤도군)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,7"/>
-                            <CheckBox Content="모든 궤도군 궤도선" IsChecked="{Binding ShowAllOrbits}" Margin="24,0,0,7"/>
-                            <CheckBox Content="지상궤적 (수신소 중심을 지나는 반복 궤적)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,7"/>
-                            <CheckBox Content="위성 이름표" IsChecked="{Binding ShowSatelliteLabels}" Margin="0,0,0,7"/>
-                            <CheckBox Content="모든 위성 날개·접시 움직임" IsChecked="{Binding AnimateAllSatellites}" Margin="0,0,0,2"
-                                      ToolTip="끄면 위성들을 고정 자세의 한 묶음으로 그립니다. 선택 위성과, 확대해서 화면에 8대 이하만 보일 때는 개별로 움직입니다."/>
-                            <TextBlock Text="끄면 고정 묶음 · 선택/화면 8대 이하만 움직임" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5" Margin="24,0,0,7"/>
-                            <CheckBox Content="달" IsChecked="{Binding ShowMoon}" Margin="0,0,0,7"/>
-                            <CheckBox Content="구름" IsChecked="{Binding ShowClouds}" Margin="0,0,0,7"/>
-                            <CheckBox Content="대기층" IsChecked="{Binding ShowAtmosphere}" Margin="0,0,0,7"/>
-                            <CheckBox Content="야간 도시 불빛 (빠른 재생 시 부하 큼)" IsChecked="{Binding ShowNightLights}" Margin="0,0,0,7"/>
-                            <CheckBox Content="별 배경" IsChecked="{Binding ShowStars}" Margin="0,0,0,4"/>
-                            <TextBlock Text="지구 주변 보기에 적용 · 태양계 보기의 행성은 항상 표시" TextWrapping="Wrap" FontSize="10" Foreground="#899BB5"/>
-                        </StackPanel>
-                    </Border>
-                </Expander>
-                <Expander Header="프레임 측정" Style="{StaticResource Section}" IsExpanded="False">
-                    <Border Style="{StaticResource SectionBody}">
-                        <StackPanel>
+                            <CheckBox Content="모든 위성 날개·접시 움직임" IsChecked="{Binding AnimateAllSatellites}" Margin="0,0,0,8"
+                                      ToolTip="끄면 위성들을 고정 자세의 한 묶음으로 그립니다. 선택 위성과, 화면에 8대 이하만 보일 때는 개별로 움직입니다."/>
                             <Button Content="{Binding FrameMeasurementButton}" Command="{Binding MeasureFramesCommand}" Style="{StaticResource PanelButton}"/>
                             <TextBlock Text="{Binding FrameMeasurementStatus}" FontFamily="Consolas" Foreground="#65DEE0" FontSize="10" TextWrapping="Wrap"/>
                         </StackPanel>
@@ -459,13 +474,14 @@
             </StackPanel></ScrollViewer>
         </Grid>
         <DockPanel x:Name="BottomBar" Grid.Row="2" Margin="0,12,0,0" LastChildFill="False">
-            <TextBlock DockPanel.Dock="Right" Text="Earth imagery: NASA Blue / Black Marble" VerticalAlignment="Center" Foreground="#7387A3" FontSize="11"/>
+            <TextBlock DockPanel.Dock="Right" Text="Imagery: NASA Blue / Black Marble · GIBS Landsat/WELD" VerticalAlignment="Center" Foreground="#7387A3" FontSize="11"/>
             <WrapPanel DockPanel.Dock="Left" VerticalAlignment="Center">
                 <Button Content="{Binding PlaybackText}" Command="{Binding TogglePlaybackCommand}" MinWidth="96" Style="{StaticResource PrimaryButton}"/>
                 <Button Content="시점 / 시간 초기화" Command="{Binding ResetCommand}"/>
                 <Button Content="전체 화면 (F11)" Click="OnToggleFullScreen" Margin="0,0,4,0" ToolTip="3D 화면만 모니터 전체에 표시합니다. Esc 또는 F11로 돌아옵니다."/>
                 <TextBlock Text="보기" Style="{StaticResource GroupLabel}" Margin="14,0,8,0"/>
                 <Button Content="지상 안테나 보기" Command="{Binding FocusGroundStationsCommand}" Tag="{Binding IsGroundFocus}" Style="{StaticResource ModeButton}"/>
+                <Button Content="안테나 모델 보기" Command="{Binding FocusAntennaCommand}" Tag="{Binding IsAntennaFocus}" Style="{StaticResource ModeButton}"/>
                 <Button Content="위성 모델 보기" Command="{Binding FocusSatelliteCommand}" Tag="{Binding IsSatelliteFocus}" Style="{StaticResource ModeButton}" Margin="0,0,4,0"/>
                 <TextBlock Text="수신소" Style="{StaticResource GroupLabel}" Margin="14,0,8,0"/>
                 <ItemsControl ItemsSource="{Binding GroundStations}" VerticalAlignment="Center">

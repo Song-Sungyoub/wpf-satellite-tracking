@@ -7,10 +7,10 @@ public static class SatelliteArticulation
         => eclipsed || sunY * sunY + sunZ * sunZ < 1e-16
             ? previousAngle : Math.Atan2(sunZ, sunY) * 180 / Math.PI;
 
-    public static (double X, double Y, double Z) TypeASensorDirection(double seconds, bool capturing)
+    public static (double X, double Y, double Z) TypeASensorDirection(double seconds)
     {
         double look = 35 * Math.PI / 180;
-        double azimuth = capturing ? 0 : 12 * Math.PI / 180 * Math.Sin(seconds * 2 * Math.PI / 180);
+        double azimuth = 12 * Math.PI / 180 * Math.Sin(seconds * 2 * Math.PI / 180);
         return (Math.Sin(look) * Math.Cos(azimuth), -Math.Cos(look), Math.Sin(look) * Math.Sin(azimuth));
     }
 }

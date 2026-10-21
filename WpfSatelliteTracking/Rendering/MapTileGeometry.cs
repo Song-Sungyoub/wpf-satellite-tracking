@@ -49,7 +49,7 @@ public static class MapTileGeometry
                 double longitude = (tile.X + u) / n * 2 * Math.PI - Math.PI;
                 double latitude = MapTile.Latitude((tile.Y + v) / n) * Math.PI / 180;
                 var normal = new Vector3D(Math.Cos(latitude) * Math.Cos(longitude), Math.Sin(latitude), -Math.Cos(latitude) * Math.Sin(longitude));
-                mesh.Positions.Add((Point3D)(normal * radius)); mesh.Normals.Add(normal);
+                mesh.Positions.Add(SceneGeometry.Point(EarthCoordinates.Surface(latitude * 180 / Math.PI, longitude * 180 / Math.PI, (radius - 1) * SatelliteOrbit.EarthRadiusKm))); mesh.Normals.Add(normal);
                 mesh.TextureCoordinates.Add(globalUv ? new Point((longitude + Math.PI) / (2 * Math.PI), (Math.PI / 2 - latitude) / Math.PI) : new Point(u, v));
             }
         for (int y = 0; y < steps; y++)

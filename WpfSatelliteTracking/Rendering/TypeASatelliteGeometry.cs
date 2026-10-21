@@ -12,9 +12,9 @@ namespace WpfSatelliteTracking.Rendering;
 internal static class TypeASatelliteGeometry
 {
     // Sensor joint frame: local +Y is the look direction, the panel lies in the joint's X–Z plane (Z ≈ along track).
-    internal static Matrix3D AntennaPose(double seconds, bool capturing)
+    internal static Matrix3D AntennaPose(double seconds)
     {
-        var y = (Vector3D)SceneGeometry.Point(SatelliteArticulation.TypeASensorDirection(seconds, capturing));
+        var y = (Vector3D)SceneGeometry.Point(SatelliteArticulation.TypeASensorDirection(seconds));
         var x = Vector3D.CrossProduct(y, new Vector3D(0, 0, 1)); x.Normalize();
         var z = Vector3D.CrossProduct(x, y);
         return new(x.X, x.Y, x.Z, 0, y.X, y.Y, y.Z, 0, z.X, z.Y, z.Z, 0, 0, -0.048, 0, 1);
@@ -91,7 +91,7 @@ internal static class TypeASatelliteGeometry
         result.Children.Add(SceneGeometry.MergeWithAtlas(body, eclipsed));
         result.Children.Add(SceneGeometry.MergeWithAtlas(wings, eclipsed));
         var head = SceneGeometry.MergeWithAtlas(antenna, eclipsed).Clone();
-        head.Transform = new MatrixTransform3D(AntennaPose(0, false)); head.Freeze();
+        head.Transform = new MatrixTransform3D(AntennaPose(0)); head.Freeze();
         result.Children.Add(head);
         result.Freeze(); return result;
     }

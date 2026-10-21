@@ -26,7 +26,7 @@ public static class MapTilePlan
             || !double.IsFinite(distance) || distance <= 0 || distance > 0.1 || !double.IsFinite(width) || width <= 0 || !double.IsFinite(height) || height <= 0)
             throw new ArgumentOutOfRangeException(nameof(latitude));
         double cos = Math.Cos(latitude * Math.PI / 180);
-        double span = 2 * distance * CircularOrbit.EarthRadiusKm * 1000 * Math.Tan(21 * Math.PI / 180) * 1.5;
+        double span = 2 * distance * SatelliteOrbit.EarthRadiusKm * 1000 * Math.Tan(21 * Math.PI / 180) * 1.5;
         int zoom = Math.Clamp((int)Math.Ceiling(Math.Log2(156543.033928 * cos / (span / width))), 5, 12);
         while (zoom > 5 && span * Math.Max(1, height / width) / (40075016.686 * cos / (1 << zoom)) > 4) zoom--;
         int n = 1 << zoom;

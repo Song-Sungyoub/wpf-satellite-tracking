@@ -31,8 +31,7 @@ public static class SolarLighting
             - 0.006758 * Math.Cos(2 * gamma) + 0.000907 * Math.Sin(2 * gamma)
             - 0.002697 * Math.Cos(3 * gamma) + 0.00148 * Math.Sin(3 * gamma);
         double longitude = Wrap((720 - utc.TimeOfDay.TotalMinutes - equation) / 4 + 180) - 180;
-        double days = (utc - new DateTime(2000, 1, 1, 12, 0, 0, DateTimeKind.Utc)).TotalDays;
-        double rotation = Wrap(280.46061837 + 360.98564736629 * days);
+        double rotation = EarthCoordinates.GmstDegrees(time);
         return new SolarState(rotation, declination / Radians, longitude,
             Direction(declination, longitude * Radians), Direction(declination, (longitude + rotation) * Radians));
     }

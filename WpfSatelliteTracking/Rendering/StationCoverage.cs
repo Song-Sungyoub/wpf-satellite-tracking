@@ -59,7 +59,7 @@ internal sealed class StationCoverage
         }
         rimMesh.Freeze();
         // Footprint: ground points that see a satellite at this altitude at >= 10° (central angle lambda).
-        double r = (CircularOrbit.EarthRadiusKm + footprintAltitudeKm) / CircularOrbit.EarthRadiusKm;
+        double r = (SatelliteOrbit.EarthRadiusKm + footprintAltitudeKm) / SatelliteOrbit.EarthRadiusKm;
         double lambda = Math.Acos(Math.Cos(elevation) / r) - elevation;
         Point3D OnGround(double angle, double azimuth, double radius)
         {

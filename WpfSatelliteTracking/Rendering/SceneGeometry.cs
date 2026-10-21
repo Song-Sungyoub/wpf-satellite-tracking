@@ -33,67 +33,54 @@ public static class SceneGeometry
         return new GeometryModel3D(mesh, material);
     }
 
-    // All inertial orbit rings of one ground-track group (each member has its own plane) merged into one mesh.
-    public static GeometryModel3D OrbitGroup(IReadOnlyList<CircularOrbit> orbits, Color color)
+    // An open, time-stamped SGP4 path, not a fixed Keplerian ring.
+    public static GeometryModel3D PredictedOrbit(SatelliteOrbit orbit, double startSeconds, Color color, double? durationSeconds = null)
+        => Trajectory(Enumerable.Range(0, 193).Select(i => Point(orbit.Position(startSeconds + (durationSeconds ?? orbit.PeriodSeconds) * i / 192))).ToArray(), color, 0.0013);
+
+    // Each future point uses its OWN sidereal angle before projection onto WGS84.
+    // Parent this path to earthPose once; never apply the scene's current rotation twice.
+    public static GeometryModel3D GroundTrack(SatelliteOrbit orbit, double startSeconds, double duration, Color color)
+    {
+        // Sample absolute timestamps rather than shifting every vertex with the rolling window.
+        // Shared future times therefore retain exactly the same polyline on the map after refresh.
+        const double stepSeconds = 20;
+        var times = new List<double> { startSeconds };
+        double endSeconds = startSeconds + duration;
+        for (double t = (Math.Floor(startSeconds / stepSeconds) + 1) * stepSeconds; t < endSeconds; t += stepSeconds)
+            times.Add(t);
+        times.Add(endSeconds);
+        var points = times.Select(t =>
+        {
+            var geo = EarthCoordinates.Geodetic(orbit.EarthFixedPosition(t));
+            return Point(EarthCoordinates.Surface(geo.Latitude, geo.Longitude, 0.0092 * SatelliteOrbit.EarthRadiusKm));
+        }).ToArray();
+        return Trajectory(points, color, 0.0010);
+    }
+    private static GeometryModel3D Trajectory(Point3D[] points, Color color, double width)
     {
         var mesh = new MeshGeometry3D();
-        const int steps = 256, sides = 4;
-        foreach (var orbit in orbits)
+        for (int i = 0; i < points.Length; i++)
         {
-            int start = mesh.Positions.Count;
-            for (int s = 0; s <= steps; s++)
-            {
-                double angle = s * Math.PI * 2 / steps;
-                var p = Point(orbit.PositionAtAngle(angle));
-                var radial = (Vector3D)p; radial.Normalize();
-                var tangent = Point(orbit.PositionAtAngle(angle + 0.001)) - p; tangent.Normalize();
-                var normal = Vector3D.CrossProduct(radial, tangent); normal.Normalize();
-                for (int j = 0; j < sides; j++)
-                {
-                    double t = j * 2 * Math.PI / sides;
-                    mesh.Positions.Add(p + 0.0022 * (radial * Math.Cos(t) + normal * Math.Sin(t)));
-                }
-            }
-            for (int s = 0; s < steps; s++)
-                for (int j = 0; j < sides; j++)
-                {
-                    int a = start + s * sides + j, b = start + s * sides + (j + 1) % sides;
-                    foreach (int k in new[] { a, b, a + sides, b, b + sides, a + sides }) mesh.TriangleIndices.Add(k);
-                }
+            var tangent = points[Math.Min(i + 1, points.Length - 1)] - points[Math.Max(0, i - 1)];
+            var side = Vector3D.CrossProduct((Vector3D)points[i], tangent);
+            if (side.LengthSquared < 1e-20) side = new Vector3D(1, 0, 0);
+            side.Normalize();
+            mesh.Positions.Add(points[i] + side * width); mesh.Positions.Add(points[i] - side * width);
+            if (i > 0) { int n = (i - 1) * 2; foreach (int k in new[]{n,n+2,n+1,n+1,n+2,n+3}) mesh.TriangleIndices.Add(k); }
         }
-        mesh.Freeze();
-        var material = MarkerMaterial(color);
+        mesh.Freeze(); var material = MarkerMaterial(color);
         return new GeometryModel3D(mesh, material) { BackMaterial = material };
     }
-
-    // Earth-fixed ground track (sub-satellite path) over one repeat cycle, as a thin ribbon just above the clouds;
-    // parent it to the rotating Earth group. Earth-fixed = inertial rotated by -rotation about +Y.
-    public static GeometryModel3D GroundTrack(CircularOrbit orbit, double startSeconds, double cycleSeconds, double rotationAtStartDegrees, Color color)
+    public static GeometryModel3D EarthSphere(double radius, Material material, int slices = 128, int stacks = 64)
     {
-        var mesh = new MeshGeometry3D();
-        int steps = (int)Math.Ceiling(cycleSeconds / 20);
-        const double radius = 1.0092, halfWidth = 0.0011;
-        Vector3D Fixed(double t)
+        var sphere = Sphere(radius, material, slices, stacks);
+        var mesh = ((MeshGeometry3D)sphere.Geometry).Clone();
+        for (int i = 0; i < mesh.Positions.Count; i++)
         {
-            var p = orbit.Position(startSeconds + t);
-            double theta = (rotationAtStartDegrees + SatelliteOperations.EarthRotationDegreesPerSecond * t) * Math.PI / 180;
-            var v = new Vector3D(p.X * Math.Cos(theta) - p.Z * Math.Sin(theta), p.Y, p.X * Math.Sin(theta) + p.Z * Math.Cos(theta));
-            v.Normalize(); return v;
+            var uv = mesh.TextureCoordinates[i];
+            mesh.Positions[i] = Point(EarthCoordinates.Surface(90 - uv.Y * 180, uv.X * 360 - 180, (radius - 1) * SatelliteOrbit.EarthRadiusKm));
         }
-        var previous = Fixed(0);
-        for (int s = 0; s <= steps; s++)
-        {
-            var point = Fixed(s * cycleSeconds / steps);
-            var next = Fixed((s + 1) * cycleSeconds / steps);
-            var side = Vector3D.CrossProduct(point, next - point); side.Normalize();
-            mesh.Positions.Add((Point3D)(point * radius + side * halfWidth)); mesh.Positions.Add((Point3D)(point * radius - side * halfWidth));
-            if (s > 0) { int i = (s - 1) * 2; foreach (int k in new[] { i, i + 2, i + 1, i + 1, i + 2, i + 3 }) mesh.TriangleIndices.Add(k); }
-            previous = point;
-        }
-        mesh.Freeze();
-        var material = MarkerMaterial(color);
-        var model = new GeometryModel3D(mesh, material) { BackMaterial = material }; model.Freeze();
-        return model;
+        mesh.Freeze(); sphere.Geometry = mesh; return sphere;
     }
 
     public static Point3D Point((double X, double Y, double Z) value) => new(value.X, value.Y, value.Z);
@@ -147,7 +134,7 @@ public static class SceneGeometry
             }
         var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Pbgra32, null, pixels, width * 4); bitmap.Freeze();
         var material = new DiffuseMaterial(new ImageBrush(bitmap)); material.Freeze();
-        var clouds = Sphere(1.008, material, 128, 64); clouds.Freeze(); return clouds;
+        var clouds = EarthSphere(1.008, material, 128, 64); clouds.Freeze(); return clouds;
     }
 
     private static double Noise(int x, int y, int cells)
@@ -166,7 +153,7 @@ public static class SceneGeometry
             material.Children.Add(new DiffuseMaterial(Brushes.Transparent));
             material.Children.Add(new EmissiveMaterial(new SolidColorBrush(Color.FromArgb(layer.Alpha, 65, 155, 255))));
             material.Freeze();
-            var sphere = Sphere(layer.Radius, material, 96, 48);
+            var sphere = EarthSphere(layer.Radius, material, 96, 48);
             sphere.Material = null; sphere.BackMaterial = material; sphere.Freeze(); group.Children.Add(sphere);
         }
         group.Freeze(); return group;
@@ -246,12 +233,17 @@ public static class SceneGeometry
         int columns = (int)Math.Ceiling(Math.Sqrt(brushes.Count)), rows = (int)Math.Ceiling(brushes.Count / (double)columns);
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
+        {
+            // These are opaque solid parts. Fill the entire atlas, including unused
+            // cells and brush-edge padding, so WPF keeps opaque depth occlusion.
+            dc.DrawRectangle(Brushes.Gray, null, new Rect(0, 0, columns * cell, rows * cell));
             for (int k = 0; k < brushes.Count; k++)
             {
                 var outer = new Rect(k % columns * cell, k / columns * cell, cell, cell);
                 dc.DrawRectangle(brushes[k], null, outer); // padding bleeds the same surface
                 dc.DrawRectangle(brushes[k], null, new Rect(outer.X + pad, outer.Y + pad, cell - 2 * pad, cell - 2 * pad));
             }
+        }
         var atlas = new RenderTargetBitmap(columns * cell, rows * cell, 96, 96, PixelFormats.Pbgra32);
         atlas.Render(visual); atlas.Freeze();
         var atlasBrush = new ImageBrush(atlas) { ViewportUnits = BrushMappingMode.Absolute, Viewport = new Rect(0, 0, 1, 1) };
@@ -329,7 +321,7 @@ public static class SceneGeometry
         var model = new GeometryModel3D(mesh, material); model.Freeze(); return model;
     }
 
-    public static Matrix3D SatellitePose(CircularOrbit orbit, double seconds)
+    public static Matrix3D SatellitePose(SatelliteOrbit orbit, double seconds)
     {
         var position = Point(orbit.Position(seconds));
         var up = (Vector3D)position; up.Normalize();
@@ -362,37 +354,7 @@ public static class SceneGeometry
         return model;
     }
 
-    public static GeometryModel3D SpaceBackground()
-    {
-        // A sphere surrounds the camera, providing the same directional backdrop as a cubemap skybox.
-        const int width = 4096, height = 2048;
-        var visual = new DrawingVisual();
-        var random = new Random(731);
-        using (var drawing = visual.RenderOpen())
-        {
-            drawing.DrawRectangle(new SolidColorBrush(Color.FromRgb(3, 7, 17)), null, new Rect(0, 0, width, height));
-            var haze = new RadialGradientBrush(Color.FromArgb(30, 55, 64, 125), Colors.Transparent);
-            drawing.DrawEllipse(haze, null, new Point(2100, 1040), 1400, 460);
-            for (int i = 0; i < 2800; i++)
-            {
-                double x = random.NextDouble() * width;
-                double y = Math.Acos(1 - 2 * random.NextDouble()) / Math.PI * height;
-                double size = i % 90 == 0 ? 1.6 : 0.4 + random.NextDouble() * 0.5;
-                byte brightness = (byte)random.Next(100, 240);
-                var brush = new SolidColorBrush(Color.FromRgb(brightness, brightness, 255));
-                drawing.DrawEllipse(brush, null, new Point(x, y), size, size);
-            }
-        }
-        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-        bitmap.Render(visual); bitmap.Freeze();
-        var material = new MaterialGroup();
-        material.Children.Add(new DiffuseMaterial(Brushes.Black));
-        material.Children.Add(new EmissiveMaterial(new ImageBrush(bitmap)));
-        material.Freeze();
-        var sphere = Sphere(500, material, 64, 32);
-        sphere.Material = null; sphere.BackMaterial = material; sphere.Freeze();
-        return sphere;
-    }
+    public static Model3DGroup SpaceBackground() => StarField.Create();
 
     // Vector (Drawing/gradient) brushes on 3D meshes are re-rasterised whenever their on-screen size changes, which with
     // 44 moving satellites happens every frame. Bake them once into bitmaps, like the planet surfaces.
