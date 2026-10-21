@@ -18,13 +18,15 @@ public sealed partial class MainViewModel
         set { if (SetFlag(ref showGroundTrackTimes, value)) RefreshTrajectories(true); }
     }
 
-    private void BuildGroundTrackTimes(double duration)
+    // startSeconds is the path's own reference time, so labels and the green track share one time base.
+    private void BuildGroundTrackTimes(double startSeconds, double duration)
     {
         if (!showGroundTrackTimes) return;
         // Absolute UTC boundaries keep a timestamp's geographical anchor stable across refreshes.
+        var startTime = SatelliteCatalog.ReferenceEpoch.AddSeconds(startSeconds);
         long step = TimeSpan.TicksPerMinute * 10;
-        long first = (SimulationTime.UtcTicks / step + 1) * step;
-        var end = SimulationTime.AddSeconds(duration);
+        long first = (startTime.UtcTicks / step + 1) * step;
+        var end = startTime.AddSeconds(duration);
         for (var time = new DateTimeOffset(first, TimeSpan.Zero); time <= end; time = time.AddMinutes(10))
         {
             var geo = EarthCoordinates.Geodetic(SelectedOrbit.EarthFixedPosition((time - SatelliteCatalog.ReferenceEpoch).TotalSeconds));

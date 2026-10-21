@@ -30,7 +30,7 @@ Side panel:
 - **시간**: simulation time, real-time button, playback speed, and a KST date/time input.
 - **위성**: checkable satellite list with **All** and LEO/MEO/GEO group toggles (unchecked satellites are hidden and not tracked; the selected one is always shown), and the selected satellite summary (orbit class, NORAD ID, altitude, inclination, TLE epoch age, sunlit/eclipsed).
 - **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai (S or S·X contact); link/pulse and coverage toggles (one color per station); next-pass prediction with S- and X-band windows for the selected satellite; jump to the next contact.
-- **표시**: orbit and ground track (10-minute KST time labels) for the selected satellite or, with **모든 위성에 적용**, for all satellites; labels, Earth-fixed camera, and Earth environment layers.
+- **표시**: in-space path (Earth-fixed or inertial) and ground track (10-minute KST time labels) for the selected satellite or, with **모든 위성에 적용**, for all satellites; labels, Earth-fixed camera, and Earth environment layers.
 - **예측 검증** (collapsed): pin a forecast ground point at a future time and replay to that exact moment.
 - **태양계 · 성능 테스트** (collapsed): scale modes, Solar System views, articulation toggle and frame timing. The Solar System exists only as a rendering stress test.
 
@@ -44,7 +44,12 @@ Ground network: each station tracks a different satellite, keeps its lock while 
 
 Radio bands are an **illustrative rule applied alike to every satellite** (real band assignments are not in TLEs): S-band TT&C from 5° elevation (link line with white/blue pulses) and X-band data downlink from 10° (gold pulses). No frequencies, data rates or link budgets are modelled. Coverage cones use the 10° mask up to the highest LEO shell.
 
-By default the selected satellite shows its future one-revolution path at orbit altitude in **Earth-fixed** coordinates, regenerated from SGP4 as it advances: it rotates with the Earth and lies directly above the ground track (a geostationary satellite stays near one point). Turning off **지구 기준** draws the inertial orbit instead, a ring fixed in space while the Earth rotates beneath it, so it drifts away from the ground track. The optional green ground track projects the same future path onto the Earth; each sample uses its own future GMST. Paths are built on a background thread.
+**공중 예상 경로** shows the future one-revolution path at orbit altitude, regenerated from SGP4 as the satellite advances. Its **경로 기준** radio buttons choose the frame:
+
+- **지구 기준 예상 경로** (default): Earth-fixed coordinates. The path rotates with the Earth and lies directly above the ground track, showing which region is overflown and when (a geostationary satellite stays near one point).
+- **관성 기준 궤도**: inertial coordinates. A ring fixed in space while the Earth rotates beneath it, so it drifts away from the map and the ground track.
+
+The optional green ground track projects the same future path onto the Earth; each sample uses its own future GMST. Paths are built on a background thread.
 
 ## Build
 

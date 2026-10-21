@@ -65,11 +65,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private void RefreshTrajectories(bool force = false)
     {
         if (orbitModels.Count != Orbits.Length) return;
-        if (!force && selectedIndex == trajectorySelection && trajectoryAll == showAllOrbits && trajectoryGround == followGroundStation
-            && (Math.Abs(OrbitTime - trajectorySeconds) < 60 || clock.Elapsed.TotalSeconds - trajectoryWallTime < 1)) return;
+        // Settings, selection, visible-set and time-jump requests (force) invalidate an in-flight result;
+        // the rolling playback refresh does not, so a slow build is still applied before the next one starts.
+        bool invalidate = force || selectedIndex != trajectorySelection || trajectoryAll != showAllOrbits || trajectoryGround != followGroundStation;
+        if (!invalidate && (Math.Abs(OrbitTime - trajectorySeconds) < 60 || clock.Elapsed.TotalSeconds - trajectoryWallTime < 1)) return;
         trajectorySeconds = OrbitTime; trajectoryWallTime = clock.Elapsed.TotalSeconds; trajectorySelection = selectedIndex; trajectoryAll = showAllOrbits; trajectoryGround = followGroundStation;
         // SGP4 sampling and mesh building run off the UI thread (one job at a time); the UI thread only swaps frozen meshes.
-        trajectoryVersion++;
+        if (invalidate) trajectoryVersion++;
         if (!trajectoryTask.IsCompleted) { trajectoryQueued = true; return; }
         trajectoryTask = ProcessTrajectoryRequestsAsync();
     }
@@ -130,7 +132,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (result.Selected is { } selectedTrack)
         {
             groundTrackHost.Children.Add(SceneGeometry.Trajectory(selectedTrack, Colors.LimeGreen));
-            if (selected == selectedIndex) BuildGroundTrackTimes(Duration(selected));
+            if (selected == selectedIndex) BuildGroundTrackTimes(start, Duration(selected));
         }
         UpdateGroundTrackTimeLabels();
     }
@@ -607,6 +609,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             var delay = operations.NextContactDelay(SelectedOrbit, OrbitTime, Math.Clamp(remaining, 0, 86400));
             if (delay is null) { contactSearchMessage = "다음 24시간/지원 시각 안에 교신 가능한 지점이 없습니다."; Notify(nameof(CommunicationStatus)); return; }
             simulationSeconds += delay.Value; playing = realTime = false; previousTime = clock.Elapsed.TotalSeconds;
+            RefreshTrajectories(true);
             contactSearchMessage = ""; TimeError = "";
             TimeInput = SimulationTime.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture); Notify(nameof(TimeInput));
             FocusOperations(); Notify(nameof(PlaybackText));
@@ -628,6 +631,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             SetViewMode(ViewMode.Default);
             realTime = false;
             simulationSeconds = 0; yaw = -2.5; pitch = 0.35; distance = 5.1; cameraTarget = new Point3D();
+            RefreshTrajectories(true);
             fitOverview = true; FitOverview(); UpdateOrbitMaterials(); UpdateScene(); NotifyCamera();
         });
         FocusGroundStationsCommand = new ActionCommand(() => FocusGround(null));
@@ -1013,6 +1017,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         TimeError = ""; TimeInput = SimulationTime.ToOffset(TimeSpan.FromHours(9)).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         previousTime = clock.Elapsed.TotalSeconds;
         if (solarView) RebuildPlanetOrbits();
+        RefreshTrajectories(true);
         UpdateScene(); Notify(nameof(PlaybackText));
     }
     public void Rotate(double dx, double dy)
