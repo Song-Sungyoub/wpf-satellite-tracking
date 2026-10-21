@@ -69,16 +69,39 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             && (Math.Abs(OrbitTime - trajectorySeconds) < 60 || clock.Elapsed.TotalSeconds - trajectoryWallTime < 1)) return;
         trajectorySeconds = OrbitTime; trajectoryWallTime = clock.Elapsed.TotalSeconds; trajectorySelection = selectedIndex; trajectoryAll = showAllOrbits; trajectoryGround = followGroundStation;
         // SGP4 sampling and mesh building run off the UI thread (one job at a time); the UI thread only swaps frozen meshes.
+        trajectoryVersion++;
         if (!trajectoryTask.IsCompleted) { trajectoryQueued = true; return; }
-        trajectoryTask = BuildTrajectoriesAsync();
+        trajectoryTask = ProcessTrajectoryRequestsAsync();
     }
     private Task trajectoryTask = Task.CompletedTask;
     private readonly Model3DGroup orbitLayer = new();
     private bool orbitsEarthFixed = true;
-    public bool OrbitsEarthFixed { get => orbitsEarthFixed; set { if (SetFlag(ref orbitsEarthFixed, value)) RefreshTrajectories(true); } }
+    public bool OrbitsEarthFixed
+    {
+        get => orbitsEarthFixed;
+        set
+        {
+            if (!SetFlag(ref orbitsEarthFixed, value)) return;
+            Notify(nameof(IsEarthFixedPathSelected)); Notify(nameof(IsInertialPathSelected));
+            RefreshTrajectories(true);
+        }
+    }
+    // Ignore the radio button's uncheck notification: only the newly selected option changes the mode.
+    public bool IsEarthFixedPathSelected { get => OrbitsEarthFixed; set { if (value) OrbitsEarthFixed = true; } }
+    public bool IsInertialPathSelected { get => !OrbitsEarthFixed; set { if (value) OrbitsEarthFixed = false; } }
+    private long trajectoryVersion;
     private bool trajectoryQueued;
+    private async Task ProcessTrajectoryRequestsAsync()
+    {
+        do
+        {
+            trajectoryQueued = false;
+            await BuildTrajectoriesAsync();
+        } while (trajectoryQueued && !disposed);
+    }
     private async Task BuildTrajectoriesAsync()
     {
+        long version = trajectoryVersion;
         double start = OrbitTime, endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
         double width = followGroundStation ? 0.0004 : 0.0013;
         bool orbits = showOrbits && endSeconds > start, tracks = showGroundTracks && endSeconds > start, earthFixed = orbitsEarthFixed;
@@ -92,7 +115,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
                 : SceneGeometry.PredictedOrbitMesh(Orbits[i], start, Duration(i), width))).ToArray(),
             Tracks: otherTracks.Select(i => (i, SceneGeometry.GroundTrackMesh(Orbits[i], start, Duration(i)))).ToArray(),
             Selected: tracks ? SceneGeometry.GroundTrackMesh(Orbits[selected], start, Duration(selected)) : null));
-        if (disposed) return;
+        if (disposed || version != trajectoryVersion) return;
         foreach (var (i, mesh) in result.Orbits) orbitModels[i].Geometry = mesh;
         // Earth-fixed paths ride on the Earth pose (like the ground track); inertial rings stay fixed in space.
         orbitLayer.Transform = earthFixed ? earthPose : Transform3D.Identity;
@@ -110,7 +133,6 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             if (selected == selectedIndex) BuildGroundTrackTimes(Duration(selected));
         }
         UpdateGroundTrackTimeLabels();
-        if (trajectoryQueued) { trajectoryQueued = false; RefreshTrajectories(true); }
     }
     private static MeshGeometry3D Frozen(MeshGeometry3D mesh) { mesh.Freeze(); return mesh; }
     private bool earthFixedView;

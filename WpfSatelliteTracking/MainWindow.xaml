@@ -428,9 +428,16 @@
                 <Expander Header="표시" Style="{StaticResource Section}">
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
-                            <CheckBox Content="궤도 (향후 1회전)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="위성 고도의 향후 경로 · 위성이 진행하면서 계속 새로 계산합니다."/>
-                            <CheckBox Content="지구 기준 (지상궤적 바로 위)" IsChecked="{Binding OrbitsEarthFixed}" Margin="20,0,0,6"
-                                      ToolTip="켜면 지구와 함께 도는 좌표로 그려 지상궤적 바로 위 위성 고도에 놓입니다 (정지궤도 위성은 거의 한 점). 끄면 우주 공간에 고정된 궤도면(관성 좌표)을 그리며, 지구가 그 아래에서 자전하므로 지상궤적과 어긋나 보입니다."/>
+                            <CheckBox Content="공중 예상 경로 (향후 1회전)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="위성 고도의 향후 경로 · 아래에서 좌표 기준을 선택합니다."/>
+                            <StackPanel Margin="20,0,0,10">
+                                <TextBlock Text="경로 기준" Foreground="#899BB5" FontSize="11" Margin="0,0,0,5"/>
+                                <RadioButton Content="지구 기준 예상 경로 (기본)" GroupName="OrbitPathReference"
+                                             Foreground="{StaticResource TextBrush}" IsChecked="{Binding IsEarthFixedPathSelected, Mode=TwoWay}" Margin="0,0,0,3"/>
+                                <TextBlock Text="어느 지역을 언제 지나는지 확인" Foreground="#899BB5" FontSize="10" Margin="18,0,0,7"/>
+                                <RadioButton Content="관성 기준 궤도" GroupName="OrbitPathReference"
+                                             Foreground="{StaticResource TextBrush}" IsChecked="{Binding IsInertialPathSelected, Mode=TwoWay}" Margin="0,0,0,3"/>
+                                <TextBlock Text="우주 공간의 경로 · 지구 자전으로 지도와 위치가 달라짐" TextWrapping="Wrap" Foreground="#899BB5" FontSize="10" Margin="18,0,0,0"/>
+                            </StackPanel>
                             <CheckBox Content="지상궤적 (향후 1회전)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,6" ToolTip="선택 위성의 예상 지상궤적 · 초록"/>
                             <CheckBox Content="통과 시각 표시 (10분 간격)" IsChecked="{Binding ShowGroundTrackTimes}" Margin="20,0,0,6" ToolTip="지상궤적 위에 KST 시각과 위도/경도를 표시합니다."/>
                             <CheckBox Content="모든 위성에 적용" IsChecked="{Binding ShowAllOrbits}" Margin="0,0,0,6" ToolTip="켜 둔 궤도·지상궤적을 모든 위성에 대해 표시합니다. 위성 색으로 표시하고 선택 위성은 밝게(지상궤적은 초록) 표시합니다."/>
