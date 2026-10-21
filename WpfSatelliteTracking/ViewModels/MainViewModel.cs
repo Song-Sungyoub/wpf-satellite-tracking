@@ -68,32 +68,44 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         if (!force && selectedIndex == trajectorySelection && trajectoryAll == showAllOrbits && trajectoryGround == followGroundStation
             && (Math.Abs(OrbitTime - trajectorySeconds) < 60 || clock.Elapsed.TotalSeconds - trajectoryWallTime < 1)) return;
         trajectorySeconds = OrbitTime; trajectoryWallTime = clock.Elapsed.TotalSeconds; trajectorySelection = selectedIndex; trajectoryAll = showAllOrbits; trajectoryGround = followGroundStation;
+        // SGP4 sampling and mesh building run off the UI thread (one job at a time); the UI thread only swaps frozen meshes.
+        if (!trajectoryTask.IsCompleted) { trajectoryQueued = true; return; }
+        trajectoryTask = BuildTrajectoriesAsync();
+    }
+    private Task trajectoryTask = Task.CompletedTask;
+    private bool trajectoryQueued;
+    private async Task BuildTrajectoriesAsync()
+    {
+        double start = OrbitTime, endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
+        double width = followGroundStation ? 0.0004 : 0.0013;
+        bool orbits = showOrbits && endSeconds > start, tracks = showGroundTracks && endSeconds > start;
+        int selected = selectedIndex;
+        var paths = Enumerable.Range(0, Orbits.Length).Where(i => i == selected || (showAllOrbits && IsShown(i))).ToArray();
+        var otherTracks = tracks && showAllOrbits ? paths.Where(i => i != selected).ToArray() : [];
+        double Duration(int i) => Math.Min(Orbits[i].PeriodSeconds, endSeconds - start);
+        var result = await Task.Run(() => (
+            Orbits: paths.Select(i => (i, orbits ? SceneGeometry.PredictedOrbitMesh(Orbits[i], start, Duration(i), width) : Frozen(new MeshGeometry3D()))).ToArray(),
+            Tracks: otherTracks.Select(i => (i, SceneGeometry.GroundTrackMesh(Orbits[i], start, Duration(i)))).ToArray(),
+            Selected: tracks ? SceneGeometry.GroundTrackMesh(Orbits[selected], start, Duration(selected)) : null));
+        if (disposed) return;
+        foreach (var (i, mesh) in result.Orbits) orbitModels[i].Geometry = mesh;
         groundTrackHost.Children.Clear();
         GroundTrackTimeLabels.Clear();
         groundTrackAnchors.Clear();
-        double endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
-        for (int i = 0; i < Orbits.Length; i++)
-            if (i == selectedIndex || (showAllOrbits && IsShown(i)))
-                orbitModels[i].Geometry = showOrbits && endSeconds > OrbitTime
-                    ? SceneGeometry.PredictedOrbit(Orbits[i], OrbitTime, colors[i], Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime), followGroundStation ? 0.0004 : 0.0013).Geometry
-                    : new MeshGeometry3D();
-        if (showGroundTracks && endSeconds > OrbitTime)
-            {
-            if (showAllOrbits)
-                for (int i = 0; i < Orbits.Length; i++)
-                {
-                    if (i == selectedIndex || !IsShown(i)) continue;
-                    var color = colors[i];
-                    var muted = Color.FromRgb((byte)(color.R * 0.65), (byte)(color.G * 0.65), (byte)(color.B * 0.65));
-                    groundTrackHost.Children.Add(SceneGeometry.GroundTrack(Orbits[i], OrbitTime,
-                        Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime), muted));
-                }
-            double duration = Math.Min(SelectedOrbit.PeriodSeconds, endSeconds - OrbitTime);
-            groundTrackHost.Children.Add(SceneGeometry.GroundTrack(SelectedOrbit, OrbitTime, duration, Colors.LimeGreen));
-            BuildGroundTrackTimes(duration);
+        foreach (var (i, mesh) in result.Tracks)
+        {
+            var color = colors[i];
+            groundTrackHost.Children.Add(SceneGeometry.Trajectory(mesh, Color.FromRgb((byte)(color.R * 0.65), (byte)(color.G * 0.65), (byte)(color.B * 0.65))));
+        }
+        if (result.Selected is { } selectedTrack)
+        {
+            groundTrackHost.Children.Add(SceneGeometry.Trajectory(selectedTrack, Colors.LimeGreen));
+            if (selected == selectedIndex) BuildGroundTrackTimes(Duration(selected));
         }
         UpdateGroundTrackTimeLabels();
+        if (trajectoryQueued) { trajectoryQueued = false; RefreshTrajectories(true); }
     }
+    private static MeshGeometry3D Frozen(MeshGeometry3D mesh) { mesh.Freeze(); return mesh; }
     private bool earthFixedView;
     public bool EarthFixedView { get => earthFixedView; set { if (SetFlag(ref earthFixedView, value)) { NotifyCamera(); } } }
     private readonly CoverageLinks coverageLinks = new(3);

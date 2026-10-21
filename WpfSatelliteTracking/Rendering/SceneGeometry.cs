@@ -35,15 +35,21 @@ public static class SceneGeometry
 
     // An open, time-stamped SGP4 path, not a fixed Keplerian ring.
     public static GeometryModel3D PredictedOrbit(SatelliteOrbit orbit, double startSeconds, Color color, double? durationSeconds = null, double width = 0.0013)
-        => Trajectory(Enumerable.Range(0, 193).Select(i => Point(orbit.Position(startSeconds + (durationSeconds ?? orbit.PeriodSeconds) * i / 192))).ToArray(), color, width);
+        => Trajectory(PredictedOrbitMesh(orbit, startSeconds, durationSeconds ?? orbit.PeriodSeconds, width), color);
+    // Frozen mesh only: safe to build on a background thread and hand to the UI thread.
+    public static MeshGeometry3D PredictedOrbitMesh(SatelliteOrbit orbit, double startSeconds, double durationSeconds, double width = 0.0013)
+        => TrajectoryMesh(Enumerable.Range(0, 193).Select(i => Point(orbit.Position(startSeconds + durationSeconds * i / 192))).ToArray(), width);
 
     // Each future point uses its OWN sidereal angle before projection onto WGS84.
     // Parent this path to earthPose once; never apply the scene's current rotation twice.
     public static GeometryModel3D GroundTrack(SatelliteOrbit orbit, double startSeconds, double duration, Color color)
+        => Trajectory(GroundTrackMesh(orbit, startSeconds, duration), color);
+    public static MeshGeometry3D GroundTrackMesh(SatelliteOrbit orbit, double startSeconds, double duration)
     {
         // Sample absolute timestamps rather than shifting every vertex with the rolling window.
         // Shared future times therefore retain exactly the same polyline on the map after refresh.
-        const double stepSeconds = 20;
+        // About 300 samples per revolution: 20 s for LEO, coarser for MEO/GEO.
+        double stepSeconds = Math.Max(20, Math.Round(orbit.PeriodSeconds / 300 / 20) * 20);
         var times = new List<double> { startSeconds };
         double endSeconds = startSeconds + duration;
         for (double t = (Math.Floor(startSeconds / stepSeconds) + 1) * stepSeconds; t < endSeconds; t += stepSeconds)
@@ -54,9 +60,14 @@ public static class SceneGeometry
             var geo = EarthCoordinates.Geodetic(orbit.EarthFixedPosition(t));
             return Point(EarthCoordinates.Surface(geo.Latitude, geo.Longitude, 0.0092 * SatelliteOrbit.EarthRadiusKm));
         }).ToArray();
-        return Trajectory(points, color, 0.0010);
+        return TrajectoryMesh(points, 0.0010);
     }
-    private static GeometryModel3D Trajectory(Point3D[] points, Color color, double width)
+    public static GeometryModel3D Trajectory(MeshGeometry3D mesh, Color color)
+    {
+        var material = MarkerMaterial(color);
+        return new GeometryModel3D(mesh, material) { BackMaterial = material };
+    }
+    private static MeshGeometry3D TrajectoryMesh(Point3D[] points, double width)
     {
         var mesh = new MeshGeometry3D();
         for (int i = 0; i < points.Length; i++)
@@ -68,8 +79,7 @@ public static class SceneGeometry
             mesh.Positions.Add(points[i] + side * width); mesh.Positions.Add(points[i] - side * width);
             if (i > 0) { int n = (i - 1) * 2; foreach (int k in new[]{n,n+2,n+1,n+1,n+2,n+3}) mesh.TriangleIndices.Add(k); }
         }
-        mesh.Freeze(); var material = MarkerMaterial(color);
-        return new GeometryModel3D(mesh, material) { BackMaterial = material };
+        mesh.Freeze(); return mesh;
     }
     public static GeometryModel3D EarthSphere(double radius, Material material, int slices = 128, int stacks = 64)
     {
