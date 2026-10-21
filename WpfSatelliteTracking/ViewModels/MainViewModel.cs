@@ -56,7 +56,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly StationCoverage[] coverages = new StationCoverage[3];
     // Future ground track of the selected satellite, stored in Earth-fixed coordinates.
     private readonly Model3DGroup groundTrackHost = new();
-    private bool showGroundTracks = true;
+    private bool showGroundTracks;
     public bool ShowGroundTracks { get => showGroundTracks; set { if (SetFlag(ref showGroundTracks, value)) UpdateGroundTrack(); } }
     private double trajectorySeconds = double.NaN, trajectoryWallTime = double.NegativeInfinity;
     private int trajectorySelection = -1;
@@ -221,7 +221,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public Model3D? SkyScene => showStars ? stars : null;
 
     // Display / load toggles. Hidden layers are removed (or lose their material) and skip their per-frame work.
-    private bool showOrbits = false, showClouds = true, showAtmosphere = true, showNightLights = true, showStars = true,
+    private bool showOrbits = true, showClouds = true, showAtmosphere = true, showNightLights = true, showStars = true,
         showMoon = true, showSatelliteLabels = true, animateAllSatellites, tilesShown;
     public bool ShowOrbits { get => showOrbits; set { if (SetFlag(ref showOrbits, value)) { RefreshTrajectories(true); UpdateOrbitMaterials(); } } }
     private bool showAllOrbits;
@@ -1186,10 +1186,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         SetViewMode(ViewMode.GroundStation);
         // The regional overview is a geographical pass forecast, just like the globe view.
-        // Reset optional inertial paths when entering it so they cannot be mistaken for ground tracks.
+        // Inertial paths are hidden in this view (see UpdateOrbitMaterials); show the ground track instead.
         if (station is null)
         {
-            ShowOrbits = false;
             ShowGroundTracks = true;
             ShowGroundTrackTimes = true;
         }

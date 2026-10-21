@@ -28,7 +28,7 @@ Side panel:
 - **시간**: simulation time, real-time button, playback speed, and a KST date/time input.
 - **위성**: satellite list and selected satellite summary (NORAD ID, altitude, inclination, TLE epoch age, sunlit/eclipsed).
 - **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai; link/pulse and coverage toggles; next-pass prediction for the selected satellite; jump to the next contact.
-- **표시**: ground tracks with 10-minute KST time labels, all-satellite ground tracks, inertial flight path, labels, Earth-fixed camera, and Earth environment layers.
+- **표시**: selected-satellite orbit, ground tracks with 10-minute KST time labels, all-satellite ground tracks, labels, Earth-fixed camera, and Earth environment layers.
 - **예측 검증** (collapsed): pin a forecast ground point at a future time and replay to that exact moment.
 - **태양계 · 성능 테스트** (collapsed): scale modes, Solar System views, articulation toggle and frame timing. The Solar System exists only as a rendering stress test.
 
@@ -40,7 +40,7 @@ Viewport:
 
 Ground network: each station tracks a different satellite above a 10° mask, keeps its lock while visible, slews at a fixed rate and parks at zenith when idle. Links are drawn only once the antenna is on target. This is greedy scheduling, not a mission planner.
 
-The selected satellite's green line is its future one-revolution ground track; each sample uses its own future GMST. The inertial flight path is optional.
+By default the selected satellite shows its future one-revolution orbit in inertial space at its altitude, regenerated from SGP4 as it advances. The optional green ground track projects the same future path onto the Earth; each sample uses its own future GMST.
 
 ## Build
 
