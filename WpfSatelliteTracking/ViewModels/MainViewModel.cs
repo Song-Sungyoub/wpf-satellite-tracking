@@ -499,7 +499,19 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
     public sealed class SatelliteLabel(SatelliteOrbit orbit, Brush color) : INotifyPropertyChanged
     {
         public SatelliteOrbit Orbit { get; } = orbit;
-        public string ShortName { get; } = orbit.Name.Split(' ')[0];
+        public string ShortName { get; } = LabelName(orbit.Name);
+        // Compact but distinct: "NOAA 20 (JPSS-1)" -> "NOAA 20", "GPS BIIR-5 (PRN 22)" -> "GPS PRN 22",
+        // "GSAT0101 (GALILEO-PFM)" -> "GALILEO-PFM", "DMSP 5D-3 F16 (USA 172)" -> "DMSP F16".
+        public static string LabelName(string name)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(name, @"^(.*?)\s*\((.*)\)\s*$");
+            string main = match.Success ? match.Groups[1].Value : name, inner = match.Success ? match.Groups[2].Value : "";
+            main = System.Text.RegularExpressions.Regex.Replace(main, @"\s+", " ").Trim();
+            if (main.StartsWith("GPS") && inner.StartsWith("PRN")) return "GPS " + inner;
+            if (main.StartsWith("GSAT") && inner.Length > 0) return inner;
+            if (main.StartsWith("DMSP 5D-3 ")) return "DMSP " + main["DMSP 5D-3 ".Length..];
+            return main;
+        }
         public Brush Color { get; } = color;
         public string Name { get; private set; } = "";
         public double Left { get; private set; }
@@ -849,7 +861,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             RefreshEffects(now);
             if (now - informationTime >= 0.2)
             {
-                informationTime = now; Notify(nameof(CommunicationStatus));
+                informationTime = now; Notify(nameof(CommunicationStatus)); UpdateSkyPlot(now);
             }
         }
         previousTime = now;
@@ -1001,7 +1013,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             informationTime = now;
             Notify(nameof(ElapsedText));
             Notify(nameof(SimulationTimeText)); Notify(nameof(SelectedInfo)); Notify(nameof(SelectedEclipsed)); Notify(nameof(TimeMode));
-            Notify(nameof(CommunicationStatus));
+            Notify(nameof(CommunicationStatus)); UpdateSkyPlot(now);
         }
     }
     public void SetSimulationTime(DateTimeOffset time, bool useRealTime = false)
@@ -1192,6 +1204,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             else if (!facing && shown) stationGroups[i].Children.Clear();
         }
     }
+    private readonly List<(int Index, double X, double Y, double Depth)> labelCandidates = new(SatelliteCatalog.Count);
+    private readonly List<Rect> labelBounds = new(SatelliteCatalog.Count);
     private void UpdateLabels()
     {
         UpdateGroundTrackTimeLabels();
@@ -1200,7 +1214,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         var right = Vector3D.CrossProduct(forward, CameraUpDirection); right.Normalize();
         var up = Vector3D.CrossProduct(right, forward);
         double focal = viewportWidth / (2 * Math.Tan(21 * Math.PI / 180));
-        int visibleIndex = 0;
+        labelCandidates.Clear();
         for (int i = 0; i < Orbits.Length; i++)
         {
             var label = labelCache[i];
@@ -1215,10 +1229,23 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             double x = viewportWidth / 2 + Vector3D.DotProduct(ray, right) * focal / depth;
             double y = viewportHeight / 2 - Vector3D.DotProduct(ray, up) * focal / depth;
             if (x < 0 || x > viewportWidth || y < 0 || y > viewportHeight) { SatelliteLabels.Remove(label); continue; }
-            label.Update((i == selectedIndex ? "● " : "") + label.ShortName + (followSatellite ? " · 추적" : ""),
-                followSatellite ? 12 : Math.Clamp(x + 20, 0, Math.Max(0, viewportWidth - 110)), followSatellite ? 12 : Math.Clamp(y - 24, 0, Math.Max(0, viewportHeight - 30)));
-            if (!SatelliteLabels.Contains(label)) SatelliteLabels.Insert(Math.Min(visibleIndex, SatelliteLabels.Count), label);
-            visibleIndex++;
+            labelCandidates.Add((i, x, y, depth));
+        }
+        // Declutter: the selected satellite first, then nearer satellites; a label that would overlap one already placed is hidden.
+        labelCandidates.Sort((a, b) => a.Index == selectedIndex ? -1 : b.Index == selectedIndex ? 1 : a.Depth.CompareTo(b.Depth));
+        labelBounds.Clear();
+        foreach (var (i, x, y, _) in labelCandidates)
+        {
+            var label = labelCache[i];
+            string text = (i == selectedIndex ? "● " : "") + label.ShortName + (followSatellite ? " · 추적" : "");
+            double width = 16 + 7.2 * text.Length, height = 26;
+            double left = followSatellite ? 12 : Math.Clamp(x + 20, 0, Math.Max(0, viewportWidth - width));
+            double top = followSatellite ? 12 : Math.Clamp(y - 24, 0, Math.Max(0, viewportHeight - height));
+            var bounds = new Rect(left, top, width, height);
+            if (labelBounds.Any(r => r.IntersectsWith(bounds))) { SatelliteLabels.Remove(label); continue; }
+            labelBounds.Add(bounds);
+            label.Update(text, left, top);
+            if (!SatelliteLabels.Contains(label)) SatelliteLabels.Add(label);
         }
         celestialLabelBounds.Clear();
         for (int i = 0; i < CelestialLabels.Count; i++)

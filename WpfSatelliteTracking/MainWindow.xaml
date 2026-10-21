@@ -412,7 +412,42 @@
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
                             <TextBlock Text="{Binding CommunicationStatus}" Foreground="#B7CCE5" FontSize="11" TextWrapping="Wrap" LineHeight="18" Margin="0,0,0,8"
-                                       ToolTip="수신소마다 고각 10° 이상인 서로 다른 위성을 추적하고, 통과 후 천정으로 돌아갑니다. 좌표는 도시 대표 좌표입니다."/>
+                                       ToolTip="수신소마다 고각 5° 이상(S밴드)인 서로 다른 저궤도 위성을 추적하고, 통과 후 천정으로 돌아갑니다. 좌표는 도시 대표 좌표입니다."/>
+                            <TextBlock Text="안테나 하늘 지도 · 방위 / 고각" Foreground="#899BB5" FontSize="11" Margin="0,0,0,4"/>
+                            <Grid Width="200" Height="200" HorizontalAlignment="Center" Margin="0,0,0,4"
+                                  ToolTip="가운데가 천정(고각 90°), 바깥 원이 지평선(0°)입니다. 위가 북, 오른쪽이 동. 점: 안테나 지향, 선: 추적 위성의 -5분 ~ +15분 경로. 점선: S밴드 5° · X밴드 10°">
+                                <Ellipse Width="176" Height="176" Stroke="#3A506D" Fill="#0B1426"/>
+                                <Ellipse Width="166.2" Height="166.2" Stroke="#4A6A8F" StrokeDashArray="2 3"/>
+                                <Ellipse Width="156.4" Height="156.4" Stroke="#8A7340" StrokeDashArray="2 3"/>
+                                <Ellipse Width="117.3" Height="117.3" Stroke="#24334B"/>
+                                <Ellipse Width="58.7" Height="58.7" Stroke="#24334B"/>
+                                <Line X1="100" Y1="12" X2="100" Y2="188" Stroke="#24334B"/>
+                                <Line X1="12" Y1="100" X2="188" Y2="100" Stroke="#24334B"/>
+                                <Canvas>
+                                    <TextBlock Text="N" Canvas.Left="96" Canvas.Top="-2" FontSize="10" Foreground="#899BB5"/>
+                                    <TextBlock Text="S" Canvas.Left="97" Canvas.Top="187" FontSize="10" Foreground="#899BB5"/>
+                                    <TextBlock Text="E" Canvas.Left="190" Canvas.Top="93" FontSize="10" Foreground="#899BB5"/>
+                                    <TextBlock Text="W" Canvas.Left="0" Canvas.Top="93" FontSize="10" Foreground="#899BB5"/>
+                                </Canvas>
+                                <ItemsControl ItemsSource="{Binding SkyStations}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><Grid/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate><DataTemplate>
+                                        <Canvas Width="200" Height="200">
+                                            <Polyline Points="{Binding Track}" Stroke="{Binding Color}" StrokeThickness="2" Opacity="0.85" Visibility="{Binding TrackVisibility}"/>
+                                            <Ellipse Width="10" Height="10" Fill="{Binding Color}" Stroke="White" StrokeThickness="1" Canvas.Left="{Binding MarkerLeft}" Canvas.Top="{Binding MarkerTop}"/>
+                                        </Canvas>
+                                    </DataTemplate></ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding SkyStations}" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate><DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Margin="6,0">
+                                        <Ellipse Width="8" Height="8" Fill="{Binding Color}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="{Binding Name}" FontSize="11" Foreground="#B7CCE5"/>
+                                    </StackPanel>
+                                </DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
                             <CheckBox Content="통신선 · 송수신 펄스" IsChecked="{Binding ShowCommunications}" Margin="0,0,0,6"
                                       ToolTip="안테나가 위성을 포착하면 통신선을 그립니다. S밴드 (고각 5° 이상, 명령·상태): 통신선 + 흰/파란 펄스 · X밴드 (고각 10° 이상, 데이터 다운링크): 금색 펄스 · 밴드 배정은 모든 위성에 같은 예시 규칙"/>
                             <CheckBox Content="수신소 커버리지" IsChecked="{Binding ShowCoverage}" Margin="0,0,0,8"
