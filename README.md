@@ -1,5 +1,9 @@
 # WPF Satellite Tracking
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+![WPF Satellite Tracking: Earth-fixed paths, ground tracks and ground-station antennas](docs/screenshot.jpg)
+
 .NET 9 / Windows WPF Viewport3D demo of satellite orbits and ground-station antenna tracking. Real public TLEs are propagated with **SGP.NET 1.6.0**, fully offline at runtime. No Unity, HelixToolkit or custom shaders.
 
 ## Tracking data
@@ -29,7 +33,7 @@ Side panel:
 
 - **시간**: simulation time, real-time button, playback speed, and a KST date/time input.
 - **위성**: checkable satellite list with **All** and LEO/MEO/GEO group toggles (unchecked satellites are hidden and not tracked; the selected one is always shown), and the selected satellite summary (orbit class, NORAD ID, altitude, inclination, TLE epoch age, sunlit/eclipsed).
-- **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai (S or S·X contact); link/pulse and coverage toggles (one color per station); next-pass prediction with S- and X-band windows for the selected satellite; jump to the next contact.
+- **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai (S or S·X contact); link/pulse and coverage toggles (one color per station); an antenna sky plot (azimuth/elevation polar chart with each antenna's pointing and its target's -5/+15 min track); next-pass prediction with S- and X-band windows for the selected satellite; jump to the next contact.
 - **표시**: in-space path (Earth-fixed or inertial) and ground track (10-minute KST time labels) for the selected satellite or, with **모든 위성에 적용**, for all satellites; labels, Earth-fixed camera, and Earth environment layers.
 - **예측 검증** (collapsed): pin a forecast ground point at a future time and replay to that exact moment.
 - **태양계 · 성능 테스트** (collapsed): scale modes, Solar System views, articulation toggle and frame timing. The Solar System exists only as a rendering stress test.
@@ -60,6 +64,10 @@ dotnet run --project WpfSatelliteTracking -c Release
 
 On machines with Smart App Control in enforcement mode, unsigned local builds can be blocked per binary; trusted Authenticode signing is the supported fix.
 
-## Licenses and imagery
+## License
+
+This project is released under the [MIT License](LICENSE). You may use, modify and redistribute it, including commercially, as long as the copyright notice (`Copyright (c) 2026 Song-Sungyoub`) and the license text are kept in copies or substantial portions.
+
+## Third-party licenses and imagery
 
 SGP.NET: MIT, see `Licenses/SGP.NET.txt` and https://github.com/parzivail/SGP.NET. Earth imagery: NASA Blue Marble / Black Marble / GIBS (Landsat/WELD); regional imagery is historical, not live.
