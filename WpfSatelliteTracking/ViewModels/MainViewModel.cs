@@ -857,8 +857,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
                 : new Point3D(sunlight.X * 18, sunlight.Y * 18, sunlight.Z * 18);
             // All bodies receive light from the displayed Sun, rather than the Earth-to-Sun direction.
             sunLight.Position = celestialPositions[0];
+            // Observation scale compresses the lunar distance (60.3 Earth radii) to 10, still beyond GEO (6.6) and GPS (4.2).
             celestialPositions[1] = (Point3D)((Vector3D)SceneGeometry.Point(bodies.MoonEarthRadii)
-                * (IsTrueScale ? SceneScale.Units(SceneScale.LunarReferenceRadiusKm) : 4.2 / 60.2666));
+                * (IsTrueScale ? SceneScale.Units(SceneScale.LunarReferenceRadiusKm) : 10 / 60.2666));
             celestialPositions[2] = (Point3D)((Vector3D)SceneGeometry.Point(bodies.MercuryAu) * unitsPerAu);
             celestialPositions[3] = (Point3D)((Vector3D)SceneGeometry.Point(bodies.VenusAu) * unitsPerAu);
             if (solarView)

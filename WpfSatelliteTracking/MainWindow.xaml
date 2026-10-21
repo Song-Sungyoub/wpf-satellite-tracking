@@ -462,7 +462,7 @@
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
                             <ComboBox x:Name="ScaleModeSelector" SelectedIndex="{Binding ScaleModeIndex, Mode=TwoWay}" Margin="0,0,0,8" AutomationProperties.Name="축척 모드">
-                                <ComboBoxItem Content="관측용 축척" ToolTip="태양계 거리는 1 AU = 18 · 천체 크기 과장"/>
+                                <ComboBoxItem Content="관측용 축척" ToolTip="태양계 거리는 1 AU = 18 · 달 거리는 지구 반지름의 10배로 압축 (실제 60배) · 천체 크기 과장"/>
                                 <ComboBoxItem Content="실제 축척" ToolTip="실제 비율 · 위성 모형 폭은 가정값"/>
                             </ComboBox>
                             <Button Content="지구 주변 보기" Command="{Binding FocusEarthSystemCommand}" Tag="{Binding IsEarthFocus}" Style="{StaticResource PanelButton}"/>
