@@ -419,10 +419,10 @@
                 <Expander Header="표시" Style="{StaticResource Section}">
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
-                            <CheckBox Content="선택 위성 궤도 (향후 1회전)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="위성 고도의 관성공간 경로 · 위성이 진행하면서 계속 새로 계산합니다. 모든 위성 지상궤적을 켜면 숨겨집니다."/>
+                            <CheckBox Content="궤도 (향후 1회전)" IsChecked="{Binding ShowOrbits}" Margin="0,0,0,6" ToolTip="위성 고도의 관성공간 경로 · 위성이 진행하면서 계속 새로 계산합니다."/>
                             <CheckBox Content="지상궤적 (향후 1회전)" IsChecked="{Binding ShowGroundTracks}" Margin="0,0,0,6" ToolTip="선택 위성의 예상 지상궤적 · 초록"/>
                             <CheckBox Content="통과 시각 표시 (10분 간격)" IsChecked="{Binding ShowGroundTrackTimes}" Margin="20,0,0,6" ToolTip="지상궤적 위에 KST 시각과 위도/경도를 표시합니다."/>
-                            <CheckBox Content="모든 위성 지상궤적" IsChecked="{Binding ShowAllOrbits}" Margin="0,0,0,6" ToolTip="위성 색으로 표시 · 선택 위성은 초록"/>
+                            <CheckBox Content="모든 위성에 적용" IsChecked="{Binding ShowAllOrbits}" Margin="0,0,0,6" ToolTip="켜 둔 궤도·지상궤적을 모든 위성에 대해 표시합니다. 위성 색으로 표시하고 선택 위성은 밝게(지상궤적은 초록) 표시합니다."/>
                             <CheckBox Content="위성 이름표" IsChecked="{Binding ShowSatelliteLabels}" Margin="0,0,0,6"/>
                             <CheckBox Content="지구 고정 보기" IsChecked="{Binding EarthFixedView}" Margin="0,0,0,10" ToolTip="카메라가 지구와 함께 회전해 지도가 멈춰 보입니다."/>
                             <TextBlock Text="지구 환경" Foreground="#899BB5" FontSize="11" Margin="0,0,0,6"/>
@@ -441,7 +441,7 @@
                     <Border Style="{StaticResource SectionBody}">
                         <StackPanel>
                             <TextBox Text="{Binding PredictionTimeInput, UpdateSourceTrigger=PropertyChanged}" ToolTip="yyyy-MM-dd HH:mm:ss (KST) · 빈 입력은 10분 뒤" Margin="0,0,0,6" FontFamily="Consolas"/>
-                            <Button Content="예측 지점 고정" Command="{Binding PinPredictionCommand}" Style="{StaticResource PanelButton}" ToolTip="모든 위성 지상궤적을 켜면 전체 위성에 고정합니다."/>
+                            <Button Content="예측 지점 고정" Command="{Binding PinPredictionCommand}" Style="{StaticResource PanelButton}" ToolTip="모든 위성에 적용을 켜면 전체 위성에 고정합니다."/>
                             <Button Content="예측 시각까지 재생" Command="{Binding ReplayPredictionCommand}" Style="{StaticResource PanelButton}"/>
                             <Button Content="고정 예측 지우기" Command="{Binding ClearPredictionCommand}" Style="{StaticResource PanelButton}"/>
                             <TextBlock Text="{Binding PredictionStatus}" TextWrapping="Wrap" Foreground="#FFD35A" FontSize="11"/>

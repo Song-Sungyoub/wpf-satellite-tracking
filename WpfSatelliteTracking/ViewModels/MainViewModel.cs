@@ -74,7 +74,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
         double endSeconds = (SatelliteCatalog.MaximumTime - SatelliteCatalog.ReferenceEpoch).TotalSeconds;
         for (int i = 0; i < Orbits.Length; i++)
             if (i == selectedIndex || showAllOrbits)
-                orbitModels[i].Geometry = showOrbits && !showAllOrbits && endSeconds > OrbitTime
+                orbitModels[i].Geometry = showOrbits && endSeconds > OrbitTime
                     ? SceneGeometry.PredictedOrbit(Orbits[i], OrbitTime, colors[i], Math.Min(Orbits[i].PeriodSeconds, endSeconds - OrbitTime)).Geometry
                     : new MeshGeometry3D();
         if (showGroundTracks && endSeconds > OrbitTime)
@@ -982,7 +982,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged, IDisposable
             double brightness = selected ? 0.9 : 0.45;
             var c = colors[representative];
             // Never infer shared orbital planes from names or display models.
-            var material = showAllOrbits || followGroundStation || followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
+            var material = followGroundStation || followSatellite || !showOrbits || (!selected && !showAllOrbits) ? null : SceneGeometry.MarkerMaterial(Color.FromRgb((byte)(c.R * brightness), (byte)(c.G * brightness), (byte)(c.B * brightness)));
             orbitModels[i].Material = material; orbitModels[i].BackMaterial = material;
         }
     }

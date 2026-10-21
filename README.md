@@ -28,7 +28,7 @@ Side panel:
 - **시간**: simulation time, real-time button, playback speed, and a KST date/time input.
 - **위성**: satellite list and selected satellite summary (NORAD ID, altitude, inclination, TLE epoch age, sunlit/eclipsed).
 - **지상국 추적**: per-station status for Daejeon, Osaka and Shanghai; link/pulse and coverage toggles; next-pass prediction for the selected satellite; jump to the next contact.
-- **표시**: selected-satellite orbit, ground tracks with 10-minute KST time labels, all-satellite ground tracks, labels, Earth-fixed camera, and Earth environment layers.
+- **표시**: orbit and ground track (10-minute KST time labels) for the selected satellite or, with **모든 위성에 적용**, for all satellites; labels, Earth-fixed camera, and Earth environment layers.
 - **예측 검증** (collapsed): pin a forecast ground point at a future time and replay to that exact moment.
 - **태양계 · 성능 테스트** (collapsed): scale modes, Solar System views, articulation toggle and frame timing. The Solar System exists only as a rendering stress test.
 
